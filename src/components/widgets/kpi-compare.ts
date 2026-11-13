@@ -106,6 +106,8 @@ export function kpiReferenceView(
   tone: Tone | undefined,
   /** Tipe + format ukuran pembanding (review M1): mis. jumlah baris tidak ditulis "Rp". */
   baseFmt?: { type: ValueType; format: NumberFormat },
+  /** Penilaian "tanpa warna" dipilih eksplisit (T-djp6 L7): target tanpa warna baik/buruk. */
+  noColor = false,
 ): KpiCompareView {
   const cur = num(value);
   const base = num(ref.value);
@@ -113,6 +115,11 @@ export function kpiReferenceView(
   const bFormat = baseFmt?.format ?? format;
   const pctOf = (x: number) => formatCompact(x, { style: "percent", decimals: 1 });
   if (ref.kind === "measure") {
+    // Server melewati ukuran pembanding (kolom disembunyikan/dihapus/tanggal): bukan "kosong" (review T-djp6 M1).
+    if (ref.value === undefined) {
+      const text = "Pembanding tidak tersedia (kolomnya disembunyikan atau tidak ada lagi)";
+      return { direction: null, change: null, text, status: null, full: text };
+    }
     const label = ref.label || "ukuran pembanding";
     if (base === null || base === 0) {
       const text = `${label}: ${base === null ? "kosong" : "0"} — rasio tidak bisa dihitung`;
@@ -148,7 +155,8 @@ export function kpiReferenceView(
   const diff = cur - target;
   const direction = diff > 0 ? "up" : diff < 0 ? "down" : "flat";
   const better = (tone ?? "up") === "up";
-  const status = direction === "flat" ? null : (direction === "up") === better ? "good" : "bad";
+  const status =
+    noColor || direction === "flat" ? null : (direction === "up") === better ? "good" : "bad";
   const change =
     target === 0
       ? `${diff > 0 ? "+" : diff < 0 ? MINUS : ""}${formatMeasure(Math.abs(diff), type, format, true)}`

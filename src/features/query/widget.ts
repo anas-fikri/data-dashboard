@@ -12,6 +12,7 @@ import {
   type KpiCompareAgainst,
   TABLE_PAGE_SIZE,
   columnsOf,
+  valueColumns,
   sortColumnSchema,
   isCalcValue,
   pivotSpecSchema,
@@ -375,8 +376,22 @@ export function widgetPlan(
           against: cmp.against,
         };
       }
-      // Ukuran pembanding (v1.21): kolom kedua hasil (m1), sheet + filter sama.
-      const ref = config.spec.reference;
+      // Ukuran pembanding (v1.21): kolom kedua hasil (m1), sheet + filter sama. Kolomnya hilang/tersembunyi →
+      // pembanding dilewati (angka utama tetap tampil; T-djp6 L5), bukan seluruh widget tidak tersedia.
+      const rawRef = config.spec.reference;
+      const refCols = rawRef?.kind === "measure" ? valueColumns(rawRef.measure) : [];
+      const refOk = refCols.every((p) => {
+        const c = byPos.get(p);
+        return !!c && !c.hidden;
+      });
+      // Ukuran pembanding berupa tanggal terkecil/terbesar: persen tidak bermakna → dilewati juga.
+      const refDate =
+        rawRef?.kind === "measure" &&
+        !isCalcValue(rawRef.measure) &&
+        (rawRef.measure.agg === "min" || rawRef.measure.agg === "max") &&
+        !!rawRef.measure.column &&
+        ["date", "timestamp"].includes(byPos.get(rawRef.measure.column)?.type ?? "");
+      const ref = rawRef && refOk && !refDate ? rawRef : undefined;
       // Nilai tanggal terkecil/terbesar: persen/target tidak bermakna (seperti pembanding periode, review L4).
       if (
         ref &&

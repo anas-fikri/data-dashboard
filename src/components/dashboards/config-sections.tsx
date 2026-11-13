@@ -231,7 +231,10 @@ export function MeasureFields({
   label = "Nilai",
   axis,
   split = false,
+  testIdPrefix = "config",
 }: {
+  /** Awalan data-testid (pembanding KPI v1.21: isian kedua di panel yang sama, T-djp6 L6). */
+  testIdPrefix?: string;
   type: WidgetType;
   columns: SourceColumn[];
   measure: ShownMeasure;
@@ -262,7 +265,7 @@ export function MeasureFields({
     <div className="grid min-w-0 grid-cols-1 gap-2">
       <Choice
         label={label}
-        testId="config-agg"
+        testId={`${testIdPrefix}-agg`}
         value={aggChoiceOf(measure)}
         options={aggChoiceOptions(type, columns)}
         onChange={(choice) => change(measureForChoice(choice, measure, columns, type))}
@@ -271,7 +274,7 @@ export function MeasureFields({
       {measure.agg !== "count" || measure.column !== undefined ? (
         <ColumnChoice
           label="dari kolom"
-          testId="config-measure"
+          testId={`${testIdPrefix}-measure`}
           value={measure.column}
           columns={columnsForAgg(measure.agg, columns, type)}
           invalidText={measureColumnText(measure, columns, type)}

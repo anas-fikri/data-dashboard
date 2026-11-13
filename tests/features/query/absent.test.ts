@@ -185,3 +185,16 @@ describe("AC 3: widget di kolom kosong → nilai kosong + penanda, bukan error",
     });
   });
 });
+
+describe("absentNames: kolom ukuran pembanding KPI tidak mengosongkan angka utama (v1.21)", () => {
+  it("kolom pembanding kosong di versi ini → tidak disebut absent", () => {
+    const c = parseWidgetConfig("kpi", {
+      sheetId: SHEET,
+      measure: { agg: "sum", column: 2 },
+      format: { style: "auto", decimals: 0 },
+      reference: { kind: "measure", measure: { agg: "sum", column: 3 } },
+    });
+    if (!c.ok) throw new Error(c.message);
+    expect(absentNames(c.config, SCHEMA)).toEqual([]);
+  });
+});
