@@ -1352,3 +1352,17 @@ bash deploy/server-release.sh 1.21.2
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
+
+## 36. Rilis v1.21.3 (tanpa migrasi)
+
+Peringatan pemroses tidak aktif (T-r5tm): koreksi skema, pemetaan kolom, dan ekspor CSV/XLSX/PDF yang menunggu
+menampilkan "Pemroses sedang tidak aktif…" bila service worker mati. App produksi juga memeriksa worker tiap menit:
+tidak ada worker ≥ 10 menit → email ke semua admin aktif (diulang tiap 6 jam, sekali saat pulih). Mematikan worker
+dengan sengaja > 10 menit (mis. beban server, §28) juga memicu email ini — itu wajar.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.3
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
