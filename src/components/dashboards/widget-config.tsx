@@ -467,7 +467,14 @@ export function WidgetConfigForm({
                     commit({ ...draft, spec: compare ? { ...spec, compare } : spec });
                   }}
                   reference={draft.spec.reference}
-                  percent={draft.spec.format.style === "percent"}
+                  // Sama dengan ToneChoice: field terhitung bisa punya format persen sendiri (review v1.21).
+                  percent={
+                    valueFormat(
+                      undefined,
+                      ("format" in draft.spec.measure ? draft.spec.measure.format : undefined) ??
+                        draft.spec.format,
+                    ).style === "percent"
+                  }
                   onReference={(reference) => {
                     const { reference: _r, compare: _c, ...spec } = draft.spec;
                     commit({ ...draft, spec: reference ? { ...spec, reference } : spec });
