@@ -1366,3 +1366,16 @@ bash deploy/server-release.sh 1.21.3
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
+
+## 37. Rilis v1.21.4 (tanpa migrasi)
+
+Alarm worker mati lebih andal (T-q8vr): tidak mengirim email ganda saat SMTP lambat, galat database sesaat tidak
+menghilangkan peringatan, dan worker yang mati-hidup berulang tetap memicu email. Email "pulih" kini dikirim setelah worker
+hidup stabil 10 menit.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.4
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
