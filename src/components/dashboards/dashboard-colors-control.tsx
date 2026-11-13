@@ -26,6 +26,20 @@ const SAVE_DELAY_MS = 350;
 // Kelas utuh (Tailwind tidak membaca nama kelas yang disusun saat runtime).
 const SWATCHES = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
 
+/**
+ * Simpanan yang belum tuntas per dashboard (T-q3gm L1): "Selesai"/"Muat ulang" menunggu ini sebelum pindah
+ * halaman, sehingga mode lihat tidak memuat template lama.
+ */
+const settlers = new Map<string, () => Promise<boolean>>();
+
+/**
+ * Kirim pilihan warna yang masih menunggu jeda dan tunggu sampai semua permintaan selesai; false = simpan
+ * terakhir gagal (pemanggil tetap di mode edit agar pesan galatnya terlihat).
+ */
+export function settleDashboardColors(dashboardId: string): Promise<boolean> {
+  return settlers.get(dashboardId)?.() ?? Promise.resolve(true);
+}
+
 export function DashboardColorsControl({
   dashboardId,
   colors,
@@ -46,6 +60,10 @@ export function DashboardColorsControl({
   const chain = useRef<Promise<void>>(Promise.resolve());
   const pending = useRef<{ n: number; next: DashboardColors | null } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Permintaan simpan yang sedang berjalan (T-q3gm L3: nilai server hanya diterima saat tidak ada). */
+  const inflight = useRef(0);
+  /** Hasil simpan terakhir (settle → false bila gagal). */
+  const lastOk = useRef(true);
   const body = (next: DashboardColors | null) => JSON.stringify({ colors: next });
   const url = `/api/dashboards/${dashboardId}/colors`;
 
@@ -53,6 +71,7 @@ export function DashboardColorsControl({
     const job = pending.current;
     pending.current = null;
     if (!job) return;
+    inflight.current++;
     chain.current = chain.current.then(async () => {
       let ok = false;
       try {
@@ -65,6 +84,8 @@ export function DashboardColorsControl({
       } catch {
         ok = false;
       }
+      inflight.current--;
+      lastOk.current = ok;
       if (ok) confirmed.current = job.next;
       if (job.n !== seq.current) return; // pilihan lebih baru menyusul
       setSaving(false);
@@ -106,22 +127,61 @@ export function DashboardColorsControl({
     timer.current = setTimeout(flush, SAVE_DELAY_MS);
   }
 
-  // Pindah halaman sebelum jeda habis: tetap terkirim (keepalive, tanpa menunggu jawaban).
-  useEffect(
-    () => () => {
+  // Nilai dari server (kanvas mengikuti perubahan rekan, T-q3gm L3) menjadi acuan "terakhir tersimpan" hanya
+  // saat tidak ada pilihan yang menunggu/sedang disimpan — pilihan lokal sendiri juga lewat prop ini.
+  useEffect(() => {
+    if (!pending.current && inflight.current === 0) confirmed.current = colors;
+  }, [colors]);
+
+  // "Selesai"/"Muat ulang" (L1): kirim sekarang dan tunggu rantai simpan selesai.
+  useEffect(() => {
+    const settle = () => {
       if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+      // Tidak ada yang menunggu/berjalan: gagal lama sudah dipulihkan ke nilai server — tidak menahan Selesai
+      // (review T-q3gm r2).
+      if (!pending.current && inflight.current === 0) return Promise.resolve(true);
+      lastOk.current = true;
+      flush();
+      return chain.current.then(() => lastOk.current);
+    };
+    settlers.set(dashboardId, settle);
+    return () => {
+      if (settlers.get(dashboardId) === settle) settlers.delete(dashboardId);
+    };
+  });
+
+  // Tutup tab / F5 / pindah halaman sebelum jeda habis (L2): kirim keepalive (tanpa menunggu jawaban).
+  // pagehide berjalan juga saat halaman dibuang tanpa cleanup React.
+  useEffect(() => {
+    const sendNow = (queued: boolean) => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
       const job = pending.current;
-      if (job) {
-        void fetch(url, {
+      pending.current = null;
+      if (!job) return;
+      const send = () =>
+        fetch(url, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: body(job.next),
           keepalive: true,
-        }).catch(() => undefined);
-      }
-    },
-    [url],
-  );
+        }).then(
+          () => undefined,
+          () => undefined,
+        );
+      // Pindah halaman di dalam aplikasi (JS tetap jalan): antre di belakang simpanan yang sedang berjalan agar
+      // nilai lama tidak menang (review T-q3gm M2). Halaman dibuang (pagehide): kirim sekarang.
+      if (queued) chain.current = chain.current.then(send);
+      else void send();
+    };
+    const onHide = () => sendNow(false);
+    window.addEventListener("pagehide", onHide);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      sendNow(true);
+    };
+  }, [url]);
 
   return (
     <Popover>

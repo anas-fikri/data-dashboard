@@ -130,6 +130,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.22.1] - 2026-11-13
+
+### Fixed
+
+- **T-q3gm:** Selesai hanya tertahan oleh simpan warna yang sedang ditunggu; dashboard frozen tidak menunggu warna (review r2) (c54305e)
+- **T-q3gm:** Selesai tertahan bila simpan warna gagal (pesan terlihat); kiriman saat pindah halaman diantrekan di belakang simpanan berjalan (review) (f37ba46)
+- **T-q3gm:** warna dashboard tersimpan tuntas sebelum Selesai/Muat ulang, kirim saat pagehide, acuan gagal-simpan dari nilai server terkini (2f5faf1)
+- **rilis:** entri Yang baru v1.22 (2dfe3e2)
+
 ## [1.22.0] - 2026-11-13
 
 ### Added
