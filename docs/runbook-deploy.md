@@ -1459,3 +1459,15 @@ bash deploy/server-release.sh 1.22.0
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) **Rollback** ke v1.21.x: widget Angka yang
 memakai _Hari yang sama_ tampil "pengaturan tidak valid" — kembalikan ke _Periode penuh_ sebelum rollback.
+
+## 44. Rilis v1.22.1 (tanpa migrasi)
+
+Warna dashboard (T-q3gm): Selesai/Muat ulang menunggu pilihan warna tersimpan (gagal → tetap di mode edit dengan
+pesan), pilihan terakhir tetap terkirim saat tab ditutup, dan simpan gagal kembali ke nilai server terkini.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.22.1
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.22.0 aman.
