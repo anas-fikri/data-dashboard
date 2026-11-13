@@ -50,3 +50,12 @@ Sampler berjalan di proses app (instrumentation), bukan worker, karena worker ju
   `pid: host` (baca-saja, cap_drop ALL) — menambah hal yang harus dipahami saat audit VM bersama.
 * Bad, because riwayat hanya 24 jam dan hilang bila Redis di-reset; bukan pengganti monitoring infrastruktur penuh.
 * Bad, because pemakaian per akun hanya perkiraan (waktu query, job berjalan), bukan CPU/RAM per user.
+
+### Catatan keamanan tambahan (T-zjwh, 2026-11-13)
+
+- Port node_exporter `127.0.0.1:19109` hanya dibatasi alamat loopback: proses lain di VM **dan** container lain
+  yang memakai `network_mode: host` tetap bisa membacanya. Isinya angka host (CPU, RAM, disk, nama antarmuka/mount),
+  tanpa rahasia; risiko ini diterima karena siapa pun yang sudah punya proses di host/host network dapat membaca
+  `/proc` sendiri. Relay `metrics-relay` tetap membatasi akses dari jaringan Docker ke subnet aplikasi ini saja.
+- `metrics-relay` memakai `socat fork` (satu proses per koneksi): `pids_limit: 64` + `mem_limit: 32m` mencegah
+  banjir koneksi menghabiskan PID/RAM host.

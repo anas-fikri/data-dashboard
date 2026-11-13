@@ -544,6 +544,30 @@ function usedText(v: Violation): string {
  * tidak cocok satuan, kunci ganda, angka negatif. Batas yang terlewati bukan exception, melainkan
  * `rejection` di rencana.
  */
+/**
+ * Pesan PERIOD_OUT_OF_WINDOW (T-zjwh): periode dari unggahan vs periode yang dipilih "Lewati periode ini" (data lama
+ * dijanjikan tetap, tetapi termasuk periode terlama yang harus dilepas agar batas terpenuhi).
+ */
+export function outOfWindowMessage(
+  uploaded: string[],
+  skipped: string[],
+  limit: string,
+  list: (keys: string[]) => string,
+): string {
+  const parts: string[] = [];
+  if (uploaded.length) {
+    parts.push(
+      `Periode ${list(uploaded)} di luar ${limit}: menyimpannya berarti melepas data yang lebih baru.`,
+    );
+  }
+  if (skipped.length) {
+    parts.push(
+      `Periode ${list(skipped)} dipilih "Lewati periode ini" (data lama tetap), tetapi termasuk periode terlama yang harus dilepas agar ${limit} terpenuhi. Pilih Ganti untuk periode itu, hapus periode lama dulu, atau minta admin menaikkan batas.`,
+    );
+  }
+  return parts.join(" ");
+}
+
 export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   validate(input);
   validateMerge(input);
@@ -678,7 +702,12 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
           ...v,
           periods: hit,
           mustRemove: [],
-          message: `Periode ${list(hit)} di luar ${limitText(v)}: menyimpannya berarti melepas data yang lebih baru.`,
+          message: outOfWindowMessage(
+            hit.filter((k) => !skip.has(k)),
+            hit.filter((k) => skip.has(k)),
+            limitText(v),
+            list,
+          ),
         };
       } else if (input.settings.onLimit === "REJECT") {
         const mustRemove = prefix.map((u) => u.key);
