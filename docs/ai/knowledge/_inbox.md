@@ -15,3 +15,4 @@
 - Laju counter jaringan dihitung per antarmuka agar reset satu antarmuka tidak merusak total; bond menggantikan anggotanya. <!-- aitk:k date=2026-11-13 task=T-zjwh -->
 - Deteksi salinan sheet: judul + jumlah baris saja memberi positif palsu untuk potongan sama besar; konfirmasi lewat sidik isi (sum hash baris tanpa kolom teknis). <!-- aitk:k date=2026-11-13 task=T-hgsz -->
 - Dashboard.filterColumns menyimpan NAMA sheet: setiap pemetaan sheet saat aktivasi harus ikut mengganti nama di filter, bukan hanya spec widget. <!-- aitk:k date=2026-11-13 task=T-01xj -->
+- Fokus sel AG lewat requestAnimationFrame membuat tombol berikutnya berangkat dari sel lama; fokuskan langsung bila sel sudah dirender. <!-- aitk:k date=2026-11-13 task=T-7377 tags=data-view,a11y -->
