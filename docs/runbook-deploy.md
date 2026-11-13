@@ -1408,3 +1408,16 @@ bash deploy/server-release.sh 1.21.6
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
+
+## 40. Rilis v1.21.7 (tanpa migrasi)
+
+Kolom filter dashboard ikut pindah saat sheet aktif diserap ke sheet gabungan atau ganti nama lewat pemetaan
+(T-01xj); sebelumnya kontrol filternya tidak menemukan sheet. Berlaku untuk unggahan berikutnya — filter yang sudah
+"hilang" di produksi bisa dipilih ulang di bilah filter.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.7
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
