@@ -130,6 +130,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.0] - 2026-11-13
+
+### Added
+
+- **kpi, metrics:** pembanding KPI ukuran lain + target angka; kartu Server hitung semua proses (T-g8ht, T-d6g9) (711beaf)
+
+### Fixed
+
+- **kpi, metrics:** antrean koreksi skema dihitung sekali; kolom pembanding hilang tidak mengosongkan angka; format & target persen (review v1.21 H1/H2/M1/M2/L2/L4) (1113f25)
+- **kpi:** target persen ikut format field terhitung (review v1.21) (f7cf853)
+
 ## [1.20.0] - 2026-11-12
 
 ### Fixed
