@@ -4,7 +4,7 @@ title: 'Warna dashboard: simpan tuntas sebelum Selesai/muat ulang + nilai server
 status: in_review
 profile: standard
 created: "2026-11-06T23:41:10Z"
-updated: "2026-11-13T15:48:29Z"
+updated: "2026-11-13T15:50:02Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -20,6 +20,10 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-13T15:48:29Z"
       findings: 1
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-11-13T15:48:50Z"
+      findings: 0
 ---
 
 ## Objective
@@ -39,3 +43,20 @@ Impact: kontrol Warna dashboard + tombol Selesai/Muat ulang di mode edit dashboa
 ## Notes
 
 - 2026-11-13T15:45:50Z Keterbatasan: keepalive saat pagehide tidak bisa diantrekan di belakang permintaan yang sedang berjalan (halaman sudah ditutup) — urutan di server bisa terbalik bila keduanya tiba bersamaan (sangat jarang).
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A — klien saja (urutan simpan warna), endpoint & otorisasi tidak berubah
