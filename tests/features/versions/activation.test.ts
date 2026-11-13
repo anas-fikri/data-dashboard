@@ -327,7 +327,7 @@ describe("activateVersionInTx", () => {
       deleteMany: vi.fn(log("versions.delete", { count: 2 })),
     },
     dataset: { update: vi.fn(log("dataset.update", {})) },
-    dashboard: { findMany: vi.fn() },
+    dashboard: { findMany: vi.fn(), update: vi.fn() },
     $executeRaw: vi.fn(async (q: { values: unknown[] }) => {
       order.push(`lock:${String(q.values[0])}`);
       return 1;
@@ -483,11 +483,26 @@ describe("activateVersionInTx", () => {
   it("T-014: sheetMap diteruskan ke rencana widget (sheet ganti nama ikut dipindah)", async () => {
     tx.sheet.findMany
       .mockReset()
+      // Nama sheet pasangan sheetMap (kolom filter dashboard, T-01xj).
+      .mockResolvedValueOnce([
+        { id: SA, name: "Penjualan" },
+        { id: SB, name: "Sales" },
+      ])
       .mockResolvedValueOnce([{ ...target[0]!, name: "Sales" }])
       .mockResolvedValueOnce([{ ...oldSheet, versionId: A }])
       .mockResolvedValueOnce([]);
     tx.sheet.groupBy.mockResolvedValue([{ versionId: A, _count: { _all: 2 } }]);
+    const dashFind = tx.dashboard.findMany.getMockImplementation();
+    tx.dashboard.findMany.mockImplementation(async (q: { select?: { filterColumns?: boolean } }) =>
+      q.select?.filterColumns
+        ? [{ id: "d1", filterColumns: [{ sheet: "Penjualan", column: "Kota" }] }]
+        : (dashFind?.(q) ?? [{ id: "d1" }]),
+    );
     await run({ sheetMap: { [SA]: SB } });
+    expect(tx.dashboard.update).toHaveBeenCalledWith({
+      where: { id: "d1" },
+      data: { filterColumns: [{ sheet: "Sales", column: "Kota" }] },
+    });
     expect(tx.widget.updateMany).toHaveBeenCalledWith({
       where: { id: "w1" },
       data: {
@@ -604,5 +619,27 @@ describe("activateVersionInTx", () => {
     expect(tx.widget.findMany).not.toHaveBeenCalled();
     expect(order.some((o) => o.startsWith("lock:"))).toBe(false);
     expect(order).toContain("savedPivot:p1");
+  });
+});
+
+/* T-01xj: kolom filter dashboard ikut sheetMap (nama sheet lama → nama sheet target). */
+import { remapFilterColumns } from "@/features/versions/activation";
+
+describe("remapFilterColumns", () => {
+  const renames = new Map([["feb", "Jan"]]);
+  it("entri sheet lama (tanpa peka kapital) diganti nama target; bawaan dan entri lain tetap", () => {
+    const json = [
+      { sheet: "FEB ", column: "Kota", default: { type: "in", values: ["Bogor"] } },
+      { sheet: "Rute", column: "Asal" },
+    ];
+    expect(remapFilterColumns(json, renames)).toEqual([
+      { sheet: "Jan", column: "Kota", default: { type: "in", values: ["Bogor"] } },
+      { sheet: "Rute", column: "Asal" },
+    ]);
+  });
+  it("tidak ada yang cocok / bukan larik / tanpa pemetaan → null (tidak ditulis)", () => {
+    expect(remapFilterColumns([{ sheet: "Rute", column: "Asal" }], renames)).toBeNull();
+    expect(remapFilterColumns("x", renames)).toBeNull();
+    expect(remapFilterColumns([{ sheet: "Feb", column: "Kota" }], new Map())).toBeNull();
   });
 });

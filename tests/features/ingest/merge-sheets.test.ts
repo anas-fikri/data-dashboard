@@ -7,6 +7,7 @@ import {
   isContinuation,
   markContinuations,
   MERGE_NEEDS_MAPPING,
+  mergeHeaderDrift,
   sheetGroups,
 } from "@/features/ingest/merge-sheets";
 import type { ActiveSnapshot } from "@/features/ingest/refresh";
@@ -452,6 +453,38 @@ describe("ingest: gabungkan sheet berkolom sama", () => {
     expect(s.repo.error).toContain(MERGE_NEEDS_MAPPING);
     expect(s.repo.error).toContain("Keterangan");
     expect(s.repo.error).toContain("Feb");
+    expect(s.storage.parquetKeys()).toEqual([]);
+  });
+
+  it("T-01xj: baris judul aktif membuat judul anggota berbeda dari pemimpin → FAILED dengan saran, tanpa objek tersisa", async () => {
+    const first = t.setup(await book());
+    first.repo.mergeSheets = true;
+    await runIngest(VID, first.repo, first.storage, first.opts);
+    const sh = first.repo.byIndex();
+    // Skema aktif tidak cocok penuh dengan baris mana pun (nama kolom lain) → seri, baris judul aktif (1)
+    // dipakai: "Jan" tetap judul baris 1, "Feb" mengambil baris 1-nya ("Laporan pengiriman") → judul berbeda.
+    const active = {
+      versionId: "aktif0000000000000001",
+      sheets: sh.map((x, i) => ({
+        id: `sheetaktif0000000000${i}`,
+        name: x.name,
+        index: x.index,
+        headerRow: 1,
+        schemaRevision: 1,
+        schema:
+          i === 0
+            ? x.schema!.map((c, k) => ({ ...c, name: `X${k}`, original: `X${k}` }))
+            : x.schema!,
+        lineageId: x.lineageId!,
+      })),
+    } as ActiveSnapshot;
+    const s = t.setup(await book());
+    s.repo.mergeSheets = true;
+    s.repo.active = active;
+    const r = await runIngest(VID, s.repo, s.storage, s.opts);
+    expect(r).toMatchObject({ outcome: "failed" });
+    expect(s.repo.error).toBe(mergeHeaderDrift("Feb", "Jan"));
+    expect(s.repo.status).toBe("FAILED");
     expect(s.storage.parquetKeys()).toEqual([]);
   });
 
