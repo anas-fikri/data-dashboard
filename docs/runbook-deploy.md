@@ -1421,3 +1421,15 @@ bash deploy/server-release.sh 1.21.7
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
+
+## 41. Rilis v1.21.8 (tanpa migrasi)
+
+Lihat data (T-7377): Home/End langsung memindah fokus sel, sehingga PageDown/panah berikutnya bergerak dari sel yang
+benar; Esc dari dialog saring mengembalikan fokus ke sel asal (F2 langsung membuka Isi sel).
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.8
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
