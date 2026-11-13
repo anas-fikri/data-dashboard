@@ -154,6 +154,12 @@ async function columnsOf(d: Duck, path: string): Promise<Set<string>> {
  */
 /** Batasi indeks kunci lokal: berkas yang paling lama tidak dipakai dihapus dulu. */
 export function trimKeyCache(dir: string, maxBytes: number): void {
+  // Sisa tulisan setengah jadi (worker mati di tengah) > 1 jam: dibuang (review T-yg3z L1).
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith(".tmp")) continue;
+    const path = join(dir, f);
+    if (Date.now() - statSync(path).mtimeMs > 3_600_000) rmSync(path, { force: true });
+  }
   const files = readdirSync(dir)
     .filter((f) => f.endsWith(".parquet"))
     .map((f) => {
@@ -171,7 +177,11 @@ export function trimKeyCache(dir: string, maxBytes: number): void {
 export async function keyMerge(
   m: KeyMergeInput,
 ): Promise<{ copies: KeptCopy[]; parts: MergePart[] }> {
-  if (m.keyCache) mkdirSync(m.keyCache.dir, { recursive: true });
+  if (m.keyCache) {
+    mkdirSync(m.keyCache.dir, { recursive: true });
+    // Juga di awal: unggahan yang ditolak (kunci dobel/kosong) tidak membuat cache tumbuh tanpa batas (L2).
+    trimKeyCache(m.keyCache.dir, m.keyCache.maxBytes);
+  }
   const { d, work } = m;
   const copies: KeptCopy[] = [];
   const parts: MergePart[] = [];
