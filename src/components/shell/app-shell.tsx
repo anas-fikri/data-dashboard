@@ -10,10 +10,11 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Dialog } from "radix-ui";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePersistedBoolean } from "@/lib/hooks/use-persisted-boolean";
 import { useIsPhone } from "@/components/dashboards/use-media-query";
 import { ServerCard } from "@/components/metrics/server-card";
+import { PresenceBeacon } from "./presence-beacon";
 import { Button } from "@/components/ui/button";
 import type { SessionUser } from "@/features/auth/session";
 import { cn } from "@/lib/utils";
@@ -59,12 +60,17 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
   }, []);
 
   const toggleCollapsed = () => setCollapsed(!collapsed);
+  // Tautan "N user online" di drawer ponsel (T-h807 R3): drawer menutup, lalu fokus ke Sedang online (bukan
+  // kembali ke tombol menu) bila bagian itu sudah ada; belum ada (halaman lain) → bagian itu memfokus diri.
+  const focusOnline = useRef(false);
 
   const isAdmin = user?.isAdmin ?? false;
   const isPhone = useIsPhone();
 
   return (
     <div className="flex min-h-dvh">
+      {/* Kehadiran (T-h807): hanya user login; tidak merender apa pun. */}
+      {user ? <PresenceBeacon /> : null}
       <a
         href="#konten"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2"
@@ -160,6 +166,14 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
                 className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-sidebar text-sidebar-foreground shadow-lg md:hidden"
                 data-testid="drawer"
                 aria-describedby={undefined}
+                onCloseAutoFocus={(e) => {
+                  if (!focusOnline.current) return;
+                  focusOnline.current = false;
+                  const online = document.getElementById("online");
+                  if (!online) return;
+                  e.preventDefault();
+                  online.focus({ preventScroll: true });
+                }}
               >
                 <Dialog.Title className="sr-only">Navigasi</Dialog.Title>
                 <div className="flex h-(--topbar-h) items-center justify-between border-b px-3">
@@ -173,7 +187,16 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
                 <div className="flex-1 overflow-y-auto p-2">
                   <SidebarNav isAdmin={isAdmin} onNavigate={() => setDrawerOpen(false)} />
                 </div>
-                {user && <ServerCard className="p-2" isAdmin={isAdmin} />}
+                {user && (
+                  <ServerCard
+                    className="p-2"
+                    isAdmin={isAdmin}
+                    onNavigate={() => {
+                      focusOnline.current = true;
+                      setDrawerOpen(false);
+                    }}
+                  />
+                )}
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>

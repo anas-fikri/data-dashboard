@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { AddUserDialog } from "@/components/admin/add-user-dialog";
 import { AdminFeedback } from "@/components/admin/admin-feedback";
 import { AdminCrumb } from "@/components/admin/admin-crumb";
+import { OnlineUsers } from "@/components/admin/online-users";
 import { UsersPagination } from "@/components/admin/users-pagination";
 import { UsersSearch } from "@/components/admin/users-search";
 import { UsersSkeleton } from "@/components/admin/users-skeleton";
@@ -52,7 +53,10 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
         description="Tambah atau hapus akun, atur peran admin dan status akun, serta alihkan dataset pengguna nonaktif."
         actions={<AddUserDialog />}
       />
+      <OnlineUsers />
       <div className="flex flex-col gap-4">
+        {/* Urutan judul (review T-h807 #6): daftar pengguna punya judul sendiri setelah "Sedang online". */}
+        <h2 className="sr-only">Daftar pengguna</h2>
         <UsersSearch q={q} status={status} />
         {/* key: ganti saringan/halaman lewat navigasi klien tetap menampilkan kerangka muat. */}
         <Suspense key={`${q}|${status}|${page}`} fallback={<UsersSkeleton />}>

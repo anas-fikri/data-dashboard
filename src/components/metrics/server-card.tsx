@@ -7,6 +7,7 @@ import {
   IconArrowUp,
   IconCircleCheck,
   IconCloudOff,
+  IconUsers,
   type Icon,
 } from "@tabler/icons-react";
 import Link from "next/link";
@@ -55,6 +56,8 @@ export function ServerCard({
   collapsed?: boolean;
   isAdmin: boolean;
   onExpand?: () => void;
+  /** Tautan di kartu dipakai (mis. drawer ponsel menutup diri dan memindahkan fokus, review T-h807 R3). */
+  onNavigate?: () => void;
 }) {
   const { data, error } = usePolling<Response>({
     url: "/api/metrics",
@@ -70,6 +73,10 @@ export function ServerCard({
     </div>
   );
 }
+
+/** "3 user online" / "Tidak ada user online" (T-h807, admin). */
+export const onlineText = (count: number) =>
+  count ? `${count.toLocaleString("id-ID")} user online` : "Tidak ada user online";
 
 const JOB_LABEL = { upload: "unggahan", schema: "koreksi skema", export: "ekspor/PDF" } as const;
 const n = (x: number) => x.toLocaleString("id-ID");
@@ -107,12 +114,14 @@ export function ServerCardView({
   collapsed = false,
   isAdmin,
   onExpand,
+  onNavigate,
 }: {
   data: MetricsSummary;
   error: boolean;
   collapsed?: boolean;
   isAdmin: boolean;
   onExpand?: () => void;
+  onNavigate?: () => void;
 }) {
   // Dua salinan kartu (sidebar + drawer ponsel) → id judul unik.
   const titleId = useId();
@@ -125,10 +134,12 @@ export function ServerCardView({
     // Sidebar diciutkan (v1.21): ikon status + CPU/RAM + jumlah proses berjalan tetap terlihat sekilas.
     const latest = error ? null : data.latest;
     const running = error ? 0 : runningOf(data.queue);
+    const online = isAdmin && !error ? data.online : undefined;
     const summary = [
       latest ? `CPU ${pct(latest.cpu)}` : null,
       latest ? `RAM ${pct(latest.mem)}` : null,
       running ? `${n(running)} proses berjalan` : null,
+      online !== undefined ? onlineText(online) : null,
     ]
       .filter(Boolean)
       .join(", ");
@@ -160,6 +171,16 @@ export function ServerCardView({
             data-testid="server-collapsed-jobs"
           >
             {n(running)}▸
+          </span>
+        ) : null}
+        {online !== undefined ? (
+          <span
+            aria-hidden
+            className="flex items-center gap-0.5 text-muted-foreground"
+            data-testid="server-collapsed-online"
+          >
+            <IconUsers size={10} stroke={2} />
+            {n(online)}
           </span>
         ) : null}
       </button>
@@ -245,6 +266,27 @@ export function ServerCardView({
           {status.text}
         </span>
       </p>
+      {isAdmin && !error && data.online !== undefined ? (
+        <Link
+          href="/admin/pengguna#online"
+          className="mt-1 flex items-center gap-1.5 rounded-sm text-sidebar-foreground underline-offset-2 hover:underline"
+          data-testid="server-online"
+          // Sudah di Admin › Pengguna: Link Next hanya menggulir (tanpa hashchange, fokus tetap di sini) →
+          // pindahkan fokus ke bagian Sedang online (review T-h807 R2 #1). Klik bertombol pengubah (tab/jendela
+          // baru) tidak menyentuh tab ini; di drawer ponsel, drawer yang menutup dan memindahkan fokus (R3).
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            if (onNavigate) return onNavigate();
+            if (window.location.pathname !== "/admin/pengguna") return;
+            requestAnimationFrame(() =>
+              document.getElementById("online")?.focus({ preventScroll: true }),
+            );
+          }}
+        >
+          <IconUsers size={14} stroke={2} aria-hidden className="shrink-0 text-muted-foreground" />
+          {onlineText(data.online)}
+        </Link>
+      ) : null}
       {p && (
         <dl className="mt-2 grid grid-cols-[auto_2.75rem_1fr] items-center gap-x-2 gap-y-1">
           {row("CPU", "cpu", p.cpu)}

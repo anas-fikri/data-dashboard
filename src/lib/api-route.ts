@@ -1,6 +1,6 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
-import { AuthError, requireUser } from "@/features/auth/session";
+import { AuthError, requireUser, type SessionUser } from "@/features/auth/session";
 import { isSameOrigin } from "@/features/uploads/http";
 import { appOrigins } from "@/lib/env";
 import { readTextLimited } from "@/lib/http-body";
@@ -21,15 +21,24 @@ export async function withUser(
   label: string,
   fn: (userId: string) => Promise<NextResponse>,
 ): Promise<NextResponse> {
-  let userId: string;
+  return withSessionUser(label, (user) => fn(user.id));
+}
+
+/** Sama dengan withUser, tetapi fn menerima user sesi lengkap (mis. isAdmin, T-h807). */
+export async function withSessionUser(
+  label: string,
+  fn: (user: SessionUser) => Promise<NextResponse>,
+): Promise<NextResponse> {
+  let user: SessionUser;
   try {
-    userId = (await requireUser("action")).id;
+    user = await requireUser("action");
   } catch (e) {
     if (e instanceof AuthError) return json({ ok: false, code: e.code }, 401);
     throw e;
   }
+  const userId = user.id;
   try {
-    return await fn(userId);
+    return await fn(user);
   } catch (e) {
     logger.error({ userId, err: e instanceof Error ? e.message : String(e) }, label);
     return json(

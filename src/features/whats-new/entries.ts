@@ -14,6 +14,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.24",
+    date: "2026-11-17",
+    items: [
+      "Admin: bagian Sedang online di Admin › Pengguna menampilkan siapa yang sedang memakai aplikasi (5 menit terakhir) beserta halaman terakhirnya; jumlahnya juga tampil di kartu Server. Hanya admin yang bisa melihatnya.",
+      "Kolom filter lebih aman dipakai bersama: perubahan dari tab yang sudah lama dibuka tidak lagi menimpa perubahan rekan — muncul pesan untuk memuat ulang halaman.",
+    ],
+  },
+  {
     version: "1.23",
     date: "2026-11-17",
     items: [

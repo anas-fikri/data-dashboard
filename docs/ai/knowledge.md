@@ -4,7 +4,6 @@
 
 Entries live in docs/ai/knowledge/<topic>.md. Search: `aitk knowledge search "<query>"`.
 
-- [_inbox](knowledge/_inbox.md): 20 entries
 - [api](knowledge/api.md): 2 entries
 - [architecture](knowledge/architecture.md): 1 entries
 - [bug](knowledge/bug.md): 7 entries
@@ -13,10 +12,11 @@ Entries live in docs/ai/knowledge/<topic>.md. Search: `aitk knowledge search "<q
 - [data-integrity](knowledge/data-integrity.md): 1 entries
 - [data-model](knowledge/data-model.md): 2 entries
 - [data-safety](knowledge/data-safety.md): 1 entries
+- [data-view](knowledge/data-view.md): 1 entries
 - [deploy](knowledge/deploy.md): 3 entries
 - [docs](knowledge/docs.md): 3 entries
 - [e2e](knowledge/e2e.md): 1 entries
-- [general](knowledge/general.md): 61 entries
+- [general](knowledge/general.md): 79 entries
 - [ingest](knowledge/ingest.md): 2 entries
 - [limits](knowledge/limits.md): 1 entries
 - [ops](knowledge/ops.md): 3 entries
@@ -24,9 +24,9 @@ Entries live in docs/ai/knowledge/<topic>.md. Search: `aitk knowledge search "<q
 - [perf](knowledge/perf.md): 4 entries
 - [query](knowledge/query.md): 5 entries
 - [quota](knowledge/quota.md): 1 entries
-- [security](knowledge/security.md): 31 entries
+- [security](knowledge/security.md): 32 entries
 - [test](knowledge/test.md): 2 entries
 - [ui](knowledge/ui.md): 25 entries
 - [upload](knowledge/upload.md): 2 entries
-- [widgets](knowledge/widgets.md): 3 entries
+- [widgets](knowledge/widgets.md): 4 entries
 - [worker](knowledge/worker.md): 1 entries
