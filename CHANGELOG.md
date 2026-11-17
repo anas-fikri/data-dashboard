@@ -130,6 +130,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.24.0] - 2026-11-17
+
+### Added
+
+- **admin:** user online — heartbeat tab terlihat ke Redis, Sedang online di Admin › Pengguna, jumlah di kartu Server (T-h807) (f2f6133)
+
+### Fixed
+
+- **admin:** fokus Sedang online dari tautan kartu Server, beacon tahan jam mundur, retensi kehadiran ≤ 24 jam (review T-h807 R2) (eff56c2)
+- **admin:** perbaikan review T-h807 (retensi saat baca, beacon tidak berhenti permanen + kirim tertunda, daftar berhenti diberi tahu, fokus #online, judul daftar, uji angka admin, batas laju) (c54344a)
+- **admin:** tautan user online di drawer ponsel menutup drawer + fokus Sedang online; klik bertombol pengubah tidak memindah fokus (review T-h807 R3) (e01b3d1)
+
 ## [1.23.1] - 2026-11-17
 
 ### Added
