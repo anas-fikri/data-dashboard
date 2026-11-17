@@ -6,6 +6,8 @@ import type { FilterColumnView } from "@/features/dashboards/filter-columns";
  * setelah router.refresh tiba. Tanpa ini, simpanan di satu tempat membuat simpanan berikutnya di tempat
  * lain (sebelum refresh) dianggap basi (STALE) padahal perubahannya milik user sendiri. Jawaban simpan
  * dicatat bersama props yang berlaku saat itu; props baru dari server menggantikannya.
+ * Pemakai knownColumns WAJIB membangun daftar baru dari daftar yang sama dengan `expected`-nya (default-filters);
+ * panel Atur kolom filter memakai daftar tampilannya sendiri sebagai `expected` dan hanya mencatat jawabannya.
  */
 const saved = new Map<string, { props: FilterColumnView[]; columns: FilterColumnView[] }>();
 
