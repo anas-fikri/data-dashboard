@@ -37,3 +37,18 @@ describe("alsoFilters", () => {
     expect(alsoFilters(col("Biaya", "Wilayah", "text"), sources)).toEqual([]);
   });
 });
+
+describe("filter-columns-store (review T-4q8n #7)", () => {
+  it("jawaban simpan dipakai sampai props baru dari server tiba", async () => {
+    const { knownColumns, rememberSavedColumns } =
+      await import("@/components/dashboards/filter-columns-store");
+    const props = [col("Penjualan", "Cabang", "text")];
+    const saved = [...props, col("Target", "Wilayah", "text")];
+    expect(knownColumns("d1", props)).toBe(props);
+    rememberSavedColumns("d1", props, saved);
+    expect(knownColumns("d1", props)).toBe(saved);
+    const fresh = [...saved];
+    expect(knownColumns("d1", fresh)).toBe(fresh);
+    expect(knownColumns("d2", props)).toBe(props);
+  });
+});

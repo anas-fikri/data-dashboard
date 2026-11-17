@@ -821,7 +821,8 @@ export const getDashboard = cache(async function getDashboard(
     // Pemilik tetap melihat kolom filter yang hilang/disembunyikan (untuk diperbaiki di pengaturan);
     // non-pemilik tidak menerima namanya sama sekali (review T-016 / catatan T-011).
     filterColumns: role === "OWNER" ? filterColumns : filterColumns.filter((f) => f.available),
-    filterColumnsHidden: role === "OWNER" ? 0 : filterColumns.filter((f) => !f.available).length,
+    // Hanya editor yang membutuhkannya (penghitung batas); viewer tidak menerima apa pun (review T-4q8n #6).
+    filterColumnsHidden: role === "EDITOR" ? filterColumns.filter((f) => !f.available).length : 0,
     crossFilterColumns: crossFilterColumnsOf(widgets, sheets),
     colors: parseColors(d.colors),
   };
@@ -859,8 +860,13 @@ const CROSS_SOURCES: readonly string[] = [...CHART_TYPES, "pivot"];
 const isCrossSource = (type: string) => CROSS_SOURCES.includes(type);
 
 /** Sheet siap query di versi aktif (nama + skema), opsional hanya id tertentu. */
-async function activeSheets(versionId: string, ids?: string[]): Promise<ActiveSheet[]> {
-  const rows = await prisma.sheet.findMany({
+async function activeSheets(
+  versionId: string,
+  ids?: string[],
+  // Di dalam transaksi berkunci: pakai koneksi transaksi itu (tanpa koneksi pool kedua, review T-4q8n #2).
+  db: Pick<Tx, "sheet"> = prisma,
+): Promise<ActiveSheet[]> {
+  const rows = await db.sheet.findMany({
     where: { versionId, typedKey: { not: null }, ...(ids ? { id: { in: ids } } : {}) },
     orderBy: { index: "asc" },
     select: { id: true, name: true, schema: true, ...PERIOD_SHEET_SELECT },
@@ -957,8 +963,9 @@ export async function setDashboardFilterColumns(
 ): Promise<DashboardResult<{ filterColumns: FilterColumnView[]; hidden: number }>> {
   if (!isIdShape(dashboardId)) return notFound();
   // Baca isi tersimpan + tulis dalam satu transaksi di bawah kunci dashboard (review T-k2ec #2): dua simpan
-  // bersamaan tidak saling menimpa kolom tersembunyi, dan akses dibaca setelah kunci.
-  const out = await prisma.$transaction(async (tx) => {
+  // bersamaan tidak saling menimpa kolom tersembunyi, dan akses dibaca setelah kunci. Kunci lama/bentrok →
+  // BUSY seperti penulis dashboard lain (locked).
+  const out = await locked(async (tx) => {
     await lockDashboard(tx, dashboardId);
     const d = await tx.dashboard.findFirst({
       where: { id: dashboardId, ...canEditWhere(userId) },
@@ -970,15 +977,15 @@ export async function setDashboardFilterColumns(
     if (!d) return { kind: "denied" as const };
     const owner = d.dataset.ownerId === userId;
     const versionId = d.dataset.activeVersionId;
-    const sheets = versionId ? await activeSheets(versionId) : [];
+    const sheets = versionId ? await activeSheets(versionId, undefined, tx) : [];
     const stored = storedFilterColumns(d.filterColumns);
-    const checked = checkFilterColumns(columns, sheets, stored);
-    if (!checked.ok) return { kind: "invalid" as const, message: checked.message };
     const viewOf = (list: FilterColumn[]) => {
       const views = filterColumnViews(list, sheets);
       // Sama dengan getDashboard: non-pemilik tidak menerima nama kolom yang tidak tersedia.
       return owner ? views : views.filter((f) => f.available);
     };
+    // Basi dicek SEBELUM validasi: tab basi mendapat pesan muat ulang, bukan galat kolom yang sudah
+    // dihapus orang lain (review T-4q8n #4).
     if (
       expected !== undefined &&
       filterColumnsSignature(viewOf(storedFilterColumns(expected))) !==
@@ -986,6 +993,10 @@ export async function setDashboardFilterColumns(
     ) {
       return { kind: "stale" as const };
     }
+    // Pengecualian kolom tak tersedia yang tidak diubah hanya untuk pemilik: editor tidak pernah menerima
+    // namanya, jadi tidak bisa menebak nama tersembunyi lewat simpanan yang berhasil (review T-4q8n #3).
+    const checked = checkFilterColumns(columns, sheets, owner ? stored : []);
+    if (!checked.ok) return { kind: "invalid" as const, message: checked.message };
     const next = owner ? checked : keepUnavailable(checked.columns, stored, sheets);
     if (!next.ok) return { kind: "invalid" as const, message: next.message };
     const r = await tx.dashboard.updateMany({
@@ -1000,6 +1011,8 @@ export async function setDashboardFilterColumns(
       hidden: owner ? 0 : all.filter((f) => !f.available).length,
     };
   });
+  if (out === "BUSY") return busy();
+  if (out === null) return denied(userId, dashboardId, "edit");
   if (out.kind === "denied") return denied(userId, dashboardId, "edit");
   if (out.kind === "stale") {
     return fail(

@@ -249,9 +249,9 @@ export type CheckedFilterColumns =
 /**
  * Validasi daftar kolom filter dari pemilik/editor: bentuk, ≤ 8, nama kolom unik (juga antar-sheet: satu
  * kontrol per nama), dan setiap kolom ada serta tidak disembunyikan di versi aktif. Yang disimpan
- * adalah nama terkini dari skema. Pengecualian (T-4q8n): kolom tersimpan yang kini tidak tersedia boleh
- * tetap ada di daftar tanpa diubah — entri tersimpannya (beserta bawaannya) dipertahankan apa adanya,
- * sehingga pemilik bisa menambah kolom lain atau menyimpan filter bawaan tanpa harus menghapusnya dulu.
+ * adalah nama terkini dari skema. Pengecualian (T-4q8n, pemilik): kolom tersimpan yang kini tidak tersedia
+ * boleh tetap ada di daftar — entri tersimpannya dipertahankan (bawaannya ikut bila entri masukan membawa
+ * bawaan), sehingga pemilik bisa menambah kolom lain atau menyimpan filter bawaan tanpa menghapusnya dulu.
  */
 export function checkFilterColumns(
   input: unknown,
@@ -287,7 +287,11 @@ export function checkFilterColumns(
         (f) => filterColumnKey(f.sheet, f.column) === same && !availableColumn(f, sheets),
       );
       if (kept) {
-        columns.push(kept);
+        // Bawaannya ikut hanya bila dikirim (daftar pengaturan mengirim bawaan apa adanya); tanpa bawaan =
+        // dihapus, mis. "Hapus filter bawaan" (review T-4q8n #5). Isi bawaan = yang tersimpan.
+        columns.push(
+          p.data.default || !kept.default ? kept : { sheet: kept.sheet, column: kept.column },
+        );
         continue;
       }
     }

@@ -12,6 +12,7 @@ import { normName } from "@/features/widgets/remap";
 import type { FilterColumnView, SourceSheet } from "@/features/dashboards/service";
 import { AddFilterColumnMenu } from "./add-filter-column-menu";
 import { api } from "./dashboard-api";
+import { knownColumns, rememberSavedColumns } from "./filter-columns-store";
 import { filterText } from "./filters/filter-text";
 
 /** Jangkar bagian "Kolom filter" di kartu pengaturan pemilik (tautan peringatan dialog share). */
@@ -112,9 +113,14 @@ export function FilterColumnsSettings({
       }));
     // Bawaan (T-vb7q) ikut agar tambah/hapus kolom lain tidak menghapusnya; `before` = daftar yang dilihat
     // (T-4q8n): sudah diubah orang lain → STALE, bukan menimpa diam-diam.
-    const r = await api.setFilterColumns(dashboardId, plain(next), plain(before));
+    const r = await api.setFilterColumns(
+      dashboardId,
+      plain(next),
+      plain(knownColumns(dashboardId, columns)),
+    );
     setPending(false);
     if (r.ok) {
+      rememberSavedColumns(dashboardId, columns, r.data.filterColumns);
       setList(r.data.filterColumns);
       setHiddenCount(r.data.hidden ?? 0);
       setResult({ ok: true, message: "Kolom filter tersimpan." });
