@@ -1,6 +1,7 @@
 import "server-only";
 import { dashboardColorsSchema, type DashboardColors } from "@/features/widgets/tone";
 import { Prisma } from "@prisma/client";
+import { autoTitle } from "@/components/dashboards/auto-title";
 import { cache } from "react";
 import { recordAudit } from "@/features/audit/service";
 import { copyName, isIdShape, nameKeyOf } from "@/features/datasets/validation";
@@ -83,6 +84,12 @@ export interface WidgetView {
   id: string;
   type: string;
   title: string;
+  /**
+   * Judul turunan pengaturan untuk TAMPILAN bila `title` kosong (T-d1ns): widget lama tanpa judul tidak
+   * lagi "Widget tanpa judul". Bukan judul tersimpan (logika judul otomatis editor tetap memakai `title`);
+   * dihitung tanpa kolom tersembunyi. Tidak ada bila judul terisi atau tidak bisa diturunkan.
+   */
+  autoTitle?: string;
   /** Spec tersimpan (T-011); klien memvalidasi ulang dengan parseWidgetConfig sebelum dipakai. */
   spec: unknown;
   /**
@@ -801,6 +808,7 @@ export const getDashboard = cache(async function getDashboard(
       ? await activeSheets(activeVersionId)
       : [];
   const filterColumns = filterColumnViews(stored, sheets);
+  const titled = await withAutoTitles(widgets, activeVersionId, sheets);
   return {
     id: d.id,
     name: d.name,
@@ -812,7 +820,7 @@ export const getDashboard = cache(async function getDashboard(
     access: role === "OWNER" ? { orgShared: d.orgShared, shareCount: d._count.shares } : null,
     layoutRevision: d.layoutRevision,
     updatedAt: d.updatedAt,
-    widgets,
+    widgets: titled,
     layout: reconcileLayout(
       d.layout,
       d.widgets.map((w) => w.id),
@@ -827,6 +835,40 @@ export const getDashboard = cache(async function getDashboard(
     colors: parseColors(d.colors),
   };
 });
+
+/**
+ * Judul turunan untuk widget tanpa judul (T-d1ns, hanya tampilan). Skema versi aktif dibaca bila belum ada;
+ * kolom tersembunyi tidak dipakai (namanya tidak boleh sampai ke viewer) — kolom yang tidak dikenal menjadi
+ * "kolom". Gagal/tidak bisa diturunkan → widget apa adanya.
+ */
+async function withAutoTitles(
+  widgets: WidgetView[],
+  activeVersionId: string | null,
+  loaded: ActiveSheet[],
+): Promise<WidgetView[]> {
+  if (!widgets.some((w) => !w.title)) return widgets;
+  let sheets = loaded;
+  if (!loaded.length && activeVersionId) {
+    // Hanya judul tampilan: gagal membaca skema tidak boleh menggagalkan dashboard.
+    try {
+      sheets = (await activeSheets(activeVersionId)) ?? [];
+    } catch {
+      return widgets;
+    }
+  }
+  const sources = sheets.map((sh) => ({
+    id: sh.id,
+    name: sh.name,
+    columns: (sh.schema ?? [])
+      .filter((c) => !c.hidden)
+      .map((c) => ({ pos: c.pos, name: c.name, type: c.type })),
+  })) as SourceSheet[];
+  return widgets.map((w) => {
+    if (w.title) return w;
+    const t = autoTitle(w, sources);
+    return t ? { ...w, autoTitle: t } : w;
+  });
+}
 
 /** Template tersimpan yang tidak lagi sah (mis. data lama) diperlakukan sebagai tidak diatur. */
 function parseColors(v: unknown): DashboardColors | null {
@@ -1002,7 +1044,7 @@ export async function setDashboardFilterColumns(
       // tersimpan, jadi tidak bisa dipakai menebak kolom tersembunyi).
       const hint =
         !owner && checked.unavailable
-          ? " Bila kolom ini baru saja disembunyikan pemilik dataset, muat ulang halaman."
+          ? " Bila data baru saja diubah pemilik dataset, muat ulang halaman."
           : "";
       return { kind: "invalid" as const, message: checked.message + hint };
     }

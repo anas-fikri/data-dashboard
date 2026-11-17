@@ -56,7 +56,7 @@ export const patchWidget = (
   patch: Partial<
     Pick<
       WidgetView,
-      "type" | "spec" | "title" | "version" | "retargeted" | "source" | "sourceError"
+      "type" | "spec" | "title" | "version" | "retargeted" | "source" | "sourceError" | "autoTitle"
     >
   >,
 ): WidgetView[] => widgets.map((w) => (w.id === widgetId ? { ...w, ...patch } : w));
@@ -229,6 +229,11 @@ export function useDashboardEditor(o: {
   const sourcesNow = useRef(o.sources ?? []);
   /** Judul otomatis yang gagal diganti per widget: tetap dianggap otomatis pada simpanan berikutnya. */
   const staleAuto = useRef(new Map<string, string>());
+  /**
+   * Judul otomatis yang belum tersimpan (gagal jaringan/server, T-d1ns): status "Belum tersimpan", dicoba
+   * ulang oleh flush ("Coba lagi"/"Selesai") dengan judul turunan pengaturan terbaru.
+   */
+  const pendingTitles = useRef(new Set<string>());
   useEffect(() => {
     sourcesNow.current = o.sources ?? [];
   });
@@ -293,7 +298,9 @@ export function useDashboardEditor(o: {
 
   /** Simpanan berhasil: tanpa tata letak tertunda, status mengikuti pengaturan widget yang gagal. */
   const settled = useCallback(() => {
-    if (!dirty.current && !stale.current) setSave(saves.retries().length ? "error" : "saved");
+    if (!dirty.current && !stale.current) {
+      setSave(saves.retries().length || pendingTitles.current.size ? "error" : "saved");
+    }
   }, [saves]);
 
   /** Kirim tata letak yang belum tersimpan. Hanya dari dalam antrean. */
@@ -418,15 +425,17 @@ export function useDashboardEditor(o: {
           return false;
         }
         staleAuto.current.delete(widgetId);
+        pendingTitles.current.delete(widgetId);
         setWidgets(
           patchWidget(widgetsNow.current, widgetId, {
             title: r.data.title,
             version: r.data.version,
           }),
         );
+        settled();
         return true;
       }),
-    [id, run, failed, setWidgets, versionOf],
+    [id, run, failed, setWidgets, settled, versionOf],
   );
 
   /**
@@ -462,37 +471,42 @@ export function useDashboardEditor(o: {
         return false;
       }
       const before = widgetsNow.current.find((w) => w.id === widgetId);
+      // Judul otomatis (T-12zs): judul kosong / masih judul turunan mengikuti pengaturan baru; judul
+      // yang diketik pengguna tidak disentuh. Diganti SEBELUM kartu menerima pengaturan baru, lalu kartu
+      // dipatch sekali dengan versi akhir: query pengaturan baru tidak pernah membawa versi judul yang belum
+      // dikenal kartu (pesan "sudah diubah" sesaat, T-d1ns). Gagal mengganti judul tidak menggagalkan
+      // simpanan pengaturan, tetapi tercatat belum tersimpan dan dicoba ulang oleh flush.
+      const stale = staleAuto.current.get(widgetId);
+      const title = before && followTitle(before.title, before, r.data, sourcesNow.current, stale);
+      let renamed: { title: string; version: string } | null = null;
+      if (title && before) {
+        const t = await api.renameWidget(id, widgetId, title, r.data.version);
+        if (t.ok) {
+          staleAuto.current.delete(widgetId);
+          pendingTitles.current.delete(widgetId);
+          renamed = t.data;
+        } else {
+          // Judul lama tetap otomatis: simpanan berikutnya mencoba lagi (bukan dianggap judul ketikan).
+          if (before.title) staleAuto.current.set(widgetId, before.title);
+          if (freezeOf(t.code)) failed(t);
+          else pendingTitles.current.add(widgetId);
+        }
+      }
       setWidgets(
         // Tersimpan → spec sudah di sheet aktif; tanda "dialihkan" (T-013) tidak berlaku lagi.
         patchWidget(widgetsNow.current, widgetId, {
           type: r.data.type,
           spec: r.data.spec,
-          version: r.data.version,
+          version: renamed?.version ?? r.data.version,
+          ...(renamed ? { title: renamed.title } : {}),
+          // Judul tampilan selama judul otomatis belum tersimpan (pengaturan baru, bukan dari muat halaman).
+          autoTitle: autoTitle(r.data, sourcesNow.current) || undefined,
           retargeted: undefined,
           // Simpanan panel menggantikan sumber/galat sumber dari muat halaman (T-073).
           source: r.data.source,
           sourceError: undefined,
         }),
       );
-      // Judul otomatis (T-12zs): judul kosong / masih judul turunan mengikuti pengaturan baru; judul
-      // yang diketik pengguna tidak disentuh. Gagal mengganti judul tidak menggagalkan simpanan.
-      const stale = staleAuto.current.get(widgetId);
-      const title = before && followTitle(before.title, before, r.data, sourcesNow.current, stale);
-      if (title && before) {
-        const t = await api.renameWidget(id, widgetId, title, r.data.version);
-        if (t.ok) {
-          staleAuto.current.delete(widgetId);
-          setWidgets(
-            patchWidget(widgetsNow.current, widgetId, {
-              title: t.data.title,
-              version: t.data.version,
-            }),
-          );
-        } else if (before.title) {
-          // Judul lama tetap otomatis: simpanan berikutnya mencoba lagi (bukan dianggap judul ketikan).
-          staleAuto.current.set(widgetId, before.title);
-        }
-      }
       settled();
       // Jadi tabel di kartu kecil: diperbesar ke minimum tabel dan disimpan otomatis.
       commitLayout(latest.current, false);
@@ -565,9 +579,36 @@ export function useDashboardEditor(o: {
           return false;
         }
       }
+      // Judul otomatis yang gagal tersimpan (T-d1ns): kirim ulang judul turunan pengaturan terbaru, selama
+      // judulnya masih otomatis (kosong / judul turunan lama yang gagal diganti).
+      for (const widgetId of [...pendingTitles.current]) {
+        const w = widgetsNow.current.find((x) => x.id === widgetId);
+        const next = w ? autoTitle(w, sourcesNow.current) : "";
+        const auto = w && (w.title === "" || w.title === staleAuto.current.get(widgetId));
+        if (!w || !auto || !next || next === w.title) {
+          pendingTitles.current.delete(widgetId);
+          continue;
+        }
+        setSave("saving");
+        const t = await api.renameWidget(id, widgetId, next, versionOf(widgetId));
+        if (!t.ok) {
+          failed(t, true);
+          return false;
+        }
+        pendingTitles.current.delete(widgetId);
+        staleAuto.current.delete(widgetId);
+        setWidgets(
+          patchWidget(widgetsNow.current, widgetId, {
+            title: t.data.title,
+            version: t.data.version,
+          }),
+        );
+      }
+      // Tanpa tata letak tertunda saveNow tidak menyentuh status: kembalikan dari "saving" di sini.
+      settled();
       return saveNow();
     });
-  }, [run, saves, sendConfig, saveNow]);
+  }, [run, saves, sendConfig, saveNow, id, failed, setWidgets, settled, versionOf]);
 
   /**
    * Ikat lagi widget terikat yang dipulihkan (review T-074 #1). Pivot tersimpan sudah dihapus /

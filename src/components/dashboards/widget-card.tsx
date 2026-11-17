@@ -76,7 +76,8 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
   },
   ref,
 ) {
-  const title = widget.title || "Widget tanpa judul";
+  // Widget tanpa judul: judul turunan pengaturannya (T-d1ns) sebelum teks pengganti.
+  const title = widget.title || widget.autoTitle || "Widget tanpa judul";
   const handle = editing && draggable;
   // Widget terikat yang tampilannya tidak cocok lagi dengan pivot tersimpan (T-073): pesan per widget.
   const config = widget.sourceError ? null : cardConfig(widget.type, widget.spec);
