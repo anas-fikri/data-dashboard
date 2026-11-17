@@ -18,7 +18,8 @@ type WidgetLike = {
 };
 
 const clip = (s: string) => {
-  const t = normalizeName(s);
+  // Karakter kontrol/format (mis. soft hyphen dari Excel) ditolak validasi judul: dibuang (review T-d1ns).
+  const t = normalizeName(s.replace(/[\p{Cc}\p{Cf}]/gu, ""));
   return t.length <= WIDGET_TITLE_MAX ? t : `${t.slice(0, WIDGET_TITLE_MAX - 1).trimEnd()}…`;
 };
 

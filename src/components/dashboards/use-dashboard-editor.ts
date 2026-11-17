@@ -299,6 +299,10 @@ export function useDashboardEditor(o: {
   /** Simpanan berhasil: tanpa tata letak tertunda, status mengikuti pengaturan widget yang gagal. */
   const settled = useCallback(() => {
     if (!dirty.current && !stale.current) {
+      // Judul tertunda milik widget yang sudah dihapus tidak dihitung (review T-d1ns #3).
+      for (const w of [...pendingTitles.current]) {
+        if (!widgetsNow.current.some((x) => x.id === w)) pendingTitles.current.delete(w);
+      }
       setSave(saves.retries().length || pendingTitles.current.size ? "error" : "saved");
     }
   }, [saves]);
@@ -489,7 +493,9 @@ export function useDashboardEditor(o: {
           // Judul lama tetap otomatis: simpanan berikutnya mencoba lagi (bukan dianggap judul ketikan).
           if (before.title) staleAuto.current.set(widgetId, before.title);
           if (freezeOf(t.code)) failed(t);
-          else pendingTitles.current.add(widgetId);
+          // Ditolak permanen (INVALID, mis. nama kolom berkarakter tak terlihat): tidak dicoba ulang —
+          // "Selesai" tidak boleh tertahan oleh judul yang tidak akan pernah diterima (review T-d1ns #1).
+          else if (t.code !== "INVALID") pendingTitles.current.add(widgetId);
         }
       }
       setWidgets(
@@ -591,6 +597,10 @@ export function useDashboardEditor(o: {
         }
         setSave("saving");
         const t = await api.renameWidget(id, widgetId, next, versionOf(widgetId));
+        if (!t.ok && t.code === "INVALID") {
+          pendingTitles.current.delete(widgetId);
+          continue;
+        }
         if (!t.ok) {
           failed(t, true);
           return false;
