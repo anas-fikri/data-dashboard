@@ -77,7 +77,7 @@ export const SNAPSHOT_HTML = `(() => {
       const bad =
         name.startsWith("on") ||
         (URLISH.test(name) && !(v === "" || v.startsWith("#") || v.startsWith("data:image/"))) ||
-        (name === "style" && /url\\(|expression\\(/.test(v));
+        (name === "style" && /\\\\|url|image-set|expression|@import/.test(v));
       if (bad) el.removeAttribute(a.name);
     }
   });
@@ -87,7 +87,10 @@ export const SNAPSHOT_HTML = `(() => {
   head.insertBefore(meta, head.firstChild);
   const style = document.createElement("style");
   // url(...) di CSS menunjuk aset origin app (font/gambar): tidak ada di file offline → dibuang.
-  style.textContent = css.join("\\n").replace(/url\\([^)]*\\)/g, "none") + "\\nbody{margin:16px auto;max-width:1100px}";
+  style.textContent = css
+    .filter((r) => !/^@(import|font-face)/i.test(r))
+    .join("\\n")
+    .replace(/(url|image-set)\\((?:"[^"]*"|'[^']*'|[^)])*\\)/gi, "none") + "\\nbody{margin:16px auto;max-width:1100px}";
   head.appendChild(style);
   return "<!doctype html>\\n" + root.outerHTML;
 })()`;

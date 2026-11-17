@@ -4,8 +4,14 @@ title: Download dashboard sebagai HTML interaktif (satu file, offline, angka ses
 status: todo
 profile: standard
 created: "2026-11-17T07:29:13Z"
-updated: "2026-11-17T07:47:07Z"
+updated: "2026-11-17T08:09:18Z"
 created_by: claude-code
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-17T08:09:18Z"
+      findings: 5
 ---
 
 ## Objective

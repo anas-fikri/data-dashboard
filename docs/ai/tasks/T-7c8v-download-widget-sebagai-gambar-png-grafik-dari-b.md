@@ -1,15 +1,21 @@
 ---
 id: T-7c8v
 title: 'Download widget sebagai gambar (PNG): grafik dari browser, Angka/Pivot lewat renderer; data (Excel/CSV) jadi pilihan ke…'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-17T07:28:06Z"
-updated: "2026-11-17T07:47:05Z"
+updated: "2026-11-17T08:09:17Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 944d17758473a09b02f652f71b50ffd61961764f
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-17T08:09:17Z"
+      findings: 5
 ---
 
 ## Objective

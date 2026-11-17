@@ -14,6 +14,15 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.23",
+    date: "2026-11-17",
+    items: [
+      "Unduh widget sebagai gambar: ikon unduh di tiap widget kini menawarkan Gambar (PNG) — tampilan grafik/angka/pivot persis seperti di layar, sesuai filter aktif. CSV dan Excel tetap ada untuk datanya.",
+      "Tombol Unduh dashboard (pengganti Ekspor PDF): pilih PDF A4, Gambar (PNG) satu halaman panjang, atau Halaman (HTML) yang bisa dibuka tanpa login dan tanpa internet — semuanya mengikuti filter yang sedang aktif.",
+      "Warna level tinggi/sedang/rendah kini aktif otomatis (makin tinggi makin baik). Angka yang terbalik seperti klaim/retur ubah di Penilaian warna widgetnya, atau pilih Tanpa warna. Bila template warna belum dipilih, warnanya mengikuti tema grafik dashboard.",
+    ],
+  },
+  {
     version: "1.22",
     date: "2026-11-13",
     items: [
