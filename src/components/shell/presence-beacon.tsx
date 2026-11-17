@@ -33,7 +33,8 @@ export function PresenceBeacon() {
     /** Kirim sekarang, atau di akhir jeda bila heartbeat terakhir terlalu dekat. */
     const send = () => {
       if (document.visibilityState !== "visible") return;
-      const wait = last + MIN_GAP_MS - Date.now();
+      // Dibatasi MIN_GAP_MS: jam sistem yang mundur tidak menunda heartbeat berjam-jam (review R2 #2).
+      const wait = Math.min(last + MIN_GAP_MS - Date.now(), MIN_GAP_MS);
       if (wait <= 0) {
         if (pending !== null) window.clearTimeout(pending);
         pending = null;

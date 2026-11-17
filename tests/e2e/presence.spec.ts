@@ -91,3 +91,29 @@ test("AC1/AC5: tab user terlihat mengirim heartbeat; admin melihatnya di Sedang 
   await userCtx.close();
   await adminCtx.close();
 });
+
+test("Kartu Server (admin): N user online; tautan dari Admin › Pengguna memfokus Sedang online", async ({
+  page,
+}) => {
+  // Kartu Server butuh monitor: ringkasan tiruan (angka online dari server sungguhan diuji unit).
+  await page.route("**/api/metrics", (r) =>
+    r.fulfill({
+      json: {
+        ok: true,
+        enabled: true,
+        available: true,
+        latest: null,
+        series: [],
+        queue: null,
+        online: 2,
+      },
+    }),
+  );
+  await apiLogin(page, ADMIN);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/admin/pengguna");
+  const link = page.getByTestId("sidebar").getByTestId("server-online");
+  await expect(link).toHaveText("2 user online");
+  await link.click();
+  await expect(page.getByTestId("online-users")).toBeFocused();
+});

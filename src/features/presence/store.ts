@@ -3,12 +3,17 @@ import type Redis from "ioredis";
 /*
  * Kehadiran user (T-h807, khusus admin): tab aplikasi yang terlihat mengirim heartbeat ±60 dtk; server
  * mencatat waktu terakhir aktif per user (ZSET, skor = epoch ms) dan halaman terakhir (string ber-TTL).
- * "Online" = aktif dalam ONLINE_WINDOW_MS. Data lebih tua dari RETENTION_MS dibuang saat menulis, dan semua
- * kunci ber-TTL — tanpa riwayat jangka panjang (privasi). Redis diinjeksi (uji tanpa Redis).
+ * "Online" = aktif dalam ONLINE_WINDOW_MS. Data lebih tua dari RETENTION_MS dibuang saat menulis/membaca,
+ * dan semua kunci ber-TTL RETENTION_MS — paling lama 24 jam, tanpa riwayat (privasi). Redis diinjeksi.
  */
 
 export const ONLINE_WINDOW_MS = 5 * 60_000;
-export const RETENTION_MS = 24 * 60 * 60_000;
+/**
+ * Umur maksimum anggota saat dibuang (12 jam) + TTL kunci (12 jam sejak heartbeat terakhir) = catatan tidak
+ * pernah bertahan lebih dari 24 jam, juga saat sistem sepi (review T-h807 R2 #3). Hanya jendela 5 menit
+ * yang dibaca, jadi 12 jam lebih dari cukup.
+ */
+export const RETENTION_MS = 12 * 60 * 60_000;
 const RETENTION_SEC = RETENTION_MS / 1000;
 
 const ZKEY = "presence:z";

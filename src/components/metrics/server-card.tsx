@@ -267,6 +267,14 @@ export function ServerCardView({
           href="/admin/pengguna#online"
           className="mt-1 flex items-center gap-1.5 rounded-sm text-sidebar-foreground underline-offset-2 hover:underline"
           data-testid="server-online"
+          // Sudah di Admin › Pengguna: Link Next hanya menggulir (tanpa hashchange, fokus tetap di sini) →
+          // pindahkan fokus ke bagian Sedang online (review T-h807 R2 #1).
+          onClick={() => {
+            if (window.location.pathname !== "/admin/pengguna") return;
+            requestAnimationFrame(() =>
+              document.getElementById("online")?.focus({ preventScroll: true }),
+            );
+          }}
         >
           <IconUsers size={14} stroke={2} aria-hidden className="shrink-0 text-muted-foreground" />
           {onlineText(data.online)}

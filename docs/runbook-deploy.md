@@ -1513,7 +1513,7 @@ bash deploy/server-release.sh 1.23.1
 ## 47. Rilis v1.24.0 (tanpa migrasi)
 
 User online untuk admin (T-h807): tab aplikasi yang terlihat mengirim heartbeat ±60 dtk ke `POST /api/presence`; Redis
-menyimpan `presence:z` (ZSET waktu terakhir aktif) dan `presence:p:<userId>` (halaman terakhir, TTL 24 jam). Admin melihat
+menyimpan `presence:z` (ZSET waktu terakhir aktif) dan `presence:p:<userId>` (halaman terakhir, TTL 12 jam; catatan paling lama 24 jam). Admin melihat
 **Sedang online** di Admin › Pengguna dan jumlahnya di kartu Server. Tanpa migrasi, tanpa container/variabel baru.
 Seed panduan `admin-email-dan-backup`.
 
