@@ -56,6 +56,8 @@ export function ServerCard({
   collapsed?: boolean;
   isAdmin: boolean;
   onExpand?: () => void;
+  /** Tautan di kartu dipakai (mis. drawer ponsel menutup diri dan memindahkan fokus, review T-h807 R3). */
+  onNavigate?: () => void;
 }) {
   const { data, error } = usePolling<Response>({
     url: "/api/metrics",
@@ -112,12 +114,14 @@ export function ServerCardView({
   collapsed = false,
   isAdmin,
   onExpand,
+  onNavigate,
 }: {
   data: MetricsSummary;
   error: boolean;
   collapsed?: boolean;
   isAdmin: boolean;
   onExpand?: () => void;
+  onNavigate?: () => void;
 }) {
   // Dua salinan kartu (sidebar + drawer ponsel) → id judul unik.
   const titleId = useId();
@@ -268,8 +272,11 @@ export function ServerCardView({
           className="mt-1 flex items-center gap-1.5 rounded-sm text-sidebar-foreground underline-offset-2 hover:underline"
           data-testid="server-online"
           // Sudah di Admin › Pengguna: Link Next hanya menggulir (tanpa hashchange, fokus tetap di sini) →
-          // pindahkan fokus ke bagian Sedang online (review T-h807 R2 #1).
-          onClick={() => {
+          // pindahkan fokus ke bagian Sedang online (review T-h807 R2 #1). Klik bertombol pengubah (tab/jendela
+          // baru) tidak menyentuh tab ini; di drawer ponsel, drawer yang menutup dan memindahkan fokus (R3).
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            if (onNavigate) return onNavigate();
             if (window.location.pathname !== "/admin/pengguna") return;
             requestAnimationFrame(() =>
               document.getElementById("online")?.focus({ preventScroll: true }),

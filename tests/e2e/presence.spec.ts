@@ -117,3 +117,29 @@ test("Kartu Server (admin): N user online; tautan dari Admin › Pengguna memfok
   await link.click();
   await expect(page.getByTestId("online-users")).toBeFocused();
 });
+
+test("Ponsel: tautan user online di drawer menutup drawer dan memfokus Sedang online (review R3)", async ({
+  page,
+}) => {
+  await page.route("**/api/metrics", (r) =>
+    r.fulfill({
+      json: {
+        ok: true,
+        enabled: true,
+        available: true,
+        latest: null,
+        series: [],
+        queue: null,
+        online: 1,
+      },
+    }),
+  );
+  await apiLogin(page, ADMIN);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/pengguna");
+  await page.getByTestId("drawer-open").click();
+  const drawer = page.getByTestId("drawer");
+  await drawer.getByTestId("server-online").click();
+  await expect(drawer).toHaveCount(0);
+  await expect(page.getByTestId("online-users")).toBeFocused();
+});
