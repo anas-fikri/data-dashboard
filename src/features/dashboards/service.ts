@@ -235,6 +235,11 @@ export interface DashboardView {
    */
   filterColumns: FilterColumnView[];
   /**
+   * Kolom filter tersimpan yang TIDAK dikirim ke non-pemilik karena tidak tersedia (T-4q8n): tetap disimpan
+   * dan ikut batas 8, jadi penghitung editor menambahkannya. Pemilik: 0 (semua kolom ada di daftar).
+   */
+  filterColumnsHidden: number;
+  /**
    * Nama kolom dimensi grafik yang cross-filter-nya aktif (versi aktif, tidak disembunyikan): bersama
    * kolom filter, hanya kolom ini yang boleh dikirim sebagai filter dashboard (D6).
    */
@@ -816,6 +821,7 @@ export const getDashboard = cache(async function getDashboard(
     // Pemilik tetap melihat kolom filter yang hilang/disembunyikan (untuk diperbaiki di pengaturan);
     // non-pemilik tidak menerima namanya sama sekali (review T-016 / catatan T-011).
     filterColumns: role === "OWNER" ? filterColumns : filterColumns.filter((f) => f.available),
+    filterColumnsHidden: role === "OWNER" ? 0 : filterColumns.filter((f) => !f.available).length,
     crossFilterColumns: crossFilterColumnsOf(widgets, sheets),
     colors: parseColors(d.colors),
   };
@@ -948,7 +954,7 @@ export async function setDashboardFilterColumns(
    * (tampilan per peran) → STALE: tab basi tidak menimpa perubahan orang lain. Tidak ada = klien lama.
    */
   expected?: unknown,
-): Promise<DashboardResult<{ filterColumns: FilterColumnView[] }>> {
+): Promise<DashboardResult<{ filterColumns: FilterColumnView[]; hidden: number }>> {
   if (!isIdShape(dashboardId)) return notFound();
   // Baca isi tersimpan + tulis dalam satu transaksi di bawah kunci dashboard (review T-k2ec #2): dua simpan
   // bersamaan tidak saling menimpa kolom tersembunyi, dan akses dibaca setelah kunci.
@@ -965,14 +971,14 @@ export async function setDashboardFilterColumns(
     const owner = d.dataset.ownerId === userId;
     const versionId = d.dataset.activeVersionId;
     const sheets = versionId ? await activeSheets(versionId) : [];
-    const checked = checkFilterColumns(columns, sheets);
+    const stored = storedFilterColumns(d.filterColumns);
+    const checked = checkFilterColumns(columns, sheets, stored);
     if (!checked.ok) return { kind: "invalid" as const, message: checked.message };
-    const viewOf = (stored: FilterColumn[]) => {
-      const views = filterColumnViews(stored, sheets);
+    const viewOf = (list: FilterColumn[]) => {
+      const views = filterColumnViews(list, sheets);
       // Sama dengan getDashboard: non-pemilik tidak menerima nama kolom yang tidak tersedia.
       return owner ? views : views.filter((f) => f.available);
     };
-    const stored = storedFilterColumns(d.filterColumns);
     if (
       expected !== undefined &&
       filterColumnsSignature(viewOf(storedFilterColumns(expected))) !==
@@ -987,7 +993,12 @@ export async function setDashboardFilterColumns(
       data: { filterColumns: next.columns as unknown as Prisma.InputJsonValue },
     });
     if (r.count !== 1) return { kind: "denied" as const };
-    return { kind: "ok" as const, views: viewOf(next.columns) };
+    const all = filterColumnViews(next.columns, sheets);
+    return {
+      kind: "ok" as const,
+      views: viewOf(next.columns),
+      hidden: owner ? 0 : all.filter((f) => !f.available).length,
+    };
   });
   if (out.kind === "denied") return denied(userId, dashboardId, "edit");
   if (out.kind === "stale") {
@@ -997,7 +1008,7 @@ export async function setDashboardFilterColumns(
     );
   }
   if (out.kind === "invalid") return fail("INVALID", out.message);
-  return { ok: true, data: { filterColumns: out.views } };
+  return { ok: true, data: { filterColumns: out.views, hidden: out.hidden } };
 }
 
 const toView = ({ missingColumns: _, updatedAt, ...w }: StoredWidget): WidgetView => ({

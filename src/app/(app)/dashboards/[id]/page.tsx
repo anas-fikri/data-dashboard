@@ -168,7 +168,9 @@ export default async function DashboardPage({
                       as={isOwner ? "OWNER" : "EDITOR"}
                     />
                   ) : null}
-                  {pdf ? <DashboardPdfExport dashboardId={d.id} /> : null}
+                  {pdf ? (
+                    <DashboardPdfExport dashboardId={d.id} filterColumns={d.filterColumns} />
+                  ) : null}
                   {isOwner ? <ShareDialog dashboardId={d.id} dashboardName={d.name} /> : null}
                   {canEdit && !editing ? (
                     // Lihat data (T-043): seluruh sheet dataset untuk pemilik/editor; viewer tidak.
@@ -210,6 +212,7 @@ export default async function DashboardPage({
           sources={sources}
           savedPivots={savedPivots}
           filterColumns={d.filterColumns}
+          filterColumnsHidden={d.filterColumnsHidden}
           crossFilterColumns={d.crossFilterColumns}
           colors={d.colors}
           tv={tv}

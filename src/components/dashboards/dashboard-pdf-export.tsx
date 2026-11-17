@@ -23,7 +23,13 @@ import { AGAIN_ATTR, ExportStatus, NEWS_ATTR } from "@/components/widgets/export
 import { useExportJob } from "@/components/widgets/use-export-job";
 import type { ExportFileFormat, PdfExportCreateBody, RenderFormat } from "@/features/exports/types";
 import { appliedFiltersOf } from "./filters/applied-store";
-import { encodeFilterParam, parseFilterParam, type FilterState } from "./filters/filter-model";
+import {
+  defaultState,
+  encodeFilterParam,
+  parseFilterParam,
+  type FilterColumnView,
+  type FilterState,
+} from "./filters/filter-model";
 
 /*
  * "Ekspor PDF" di kepala halaman dashboard (T-018 D10): mode lihat, semua peran yang bisa melihat;
@@ -38,15 +44,18 @@ import { encodeFilterParam, parseFilterParam, type FilterState } from "./filters
 
 /**
  * Body POST: status filter yang berlaku di widget (diterbitkan kanvas, D9 — juga yang terlalu panjang
- * untuk URL), atau ?f= bila kanvas belum menerbitkan. Server menyaring ulang saat buat dan render.
+ * untuk URL), atau ?f= bila kanvas belum menerbitkan; tanpa ?f= sama sekali = filter bawaan dashboard
+ * (T-4q8n, aturan yang sama dengan kanvas: ?f= kosong → bawaan, ?f={} → tanpa filter). Server menyaring
+ * ulang saat buat dan render.
  */
 export function pdfExportBody(
   dashboardId: string,
   applied: FilterState | null,
   urlF: string | null,
   format: RenderFormat = "pdf",
+  defaults: FilterState = { filters: [] },
 ): PdfExportCreateBody {
-  const f = encodeFilterParam(applied ?? parseFilterParam(urlF ?? undefined));
+  const f = encodeFilterParam(applied ?? (urlF ? parseFilterParam(urlF) : defaults));
   return f ? { dashboardId, format, f } : { dashboardId, format };
 }
 
@@ -83,7 +92,14 @@ export function DashboardPdfWatch({ dashboardId }: { dashboardId: string }) {
   );
 }
 
-export function DashboardPdfExport({ dashboardId }: { dashboardId: string }) {
+export function DashboardPdfExport({
+  dashboardId,
+  filterColumns = [],
+}: {
+  dashboardId: string;
+  /** Kolom filter dashboard: sumber filter bawaan untuk cadangan bila kanvas belum menerbitkan. */
+  filterColumns?: FilterColumnView[];
+}) {
   const router = useRouter();
   const headingId = useId();
   const [open, setOpen] = useState(false);
@@ -100,7 +116,15 @@ export function DashboardPdfExport({ dashboardId }: { dashboardId: string }) {
   function run(format: ExportFileFormat = "pdf") {
     if (busy || (format !== "pdf" && format !== "png" && format !== "html")) return;
     const urlF = new URL(window.location.href).searchParams.get("f");
-    void start(pdfExportBody(dashboardId, appliedFiltersOf(dashboardId), urlF, format));
+    void start(
+      pdfExportBody(
+        dashboardId,
+        appliedFiltersOf(dashboardId),
+        urlF,
+        format,
+        defaultState(filterColumns),
+      ),
+    );
   }
 
   // Elemen terfokus hilang karena status berubah → fokus ke "Ekspor lagi" atau "Buat PDF".

@@ -100,7 +100,13 @@ export function FilterBar({
 }: {
   editing: boolean;
   /** Kolom filter (server) + sumber data untuk "Atur kolom filter" (mode edit pemilik/editor). */
-  manage: { dashboardId: string; columns: FilterColumnView[]; sources: SourceSheet[] } | null;
+  manage: {
+    dashboardId: string;
+    columns: FilterColumnView[];
+    sources: SourceSheet[];
+    /** Kolom tersimpan yang tidak tersedia, tidak dikirim ke editor (T-4q8n). */
+    hidden?: number;
+  } | null;
   /** Panel pengaturan widget menempel di kanan (≥ 1280 px): sidebar menjadi rel agar kanvas lebar. */
   compact?: boolean;
   /** Pemilik/editor: boleh membuat tampilan tersimpan bersama (T-tf88). */
@@ -325,6 +331,7 @@ export function FilterBar({
                     dashboardId={manage.dashboardId}
                     columns={manage.columns}
                     sources={manage.sources}
+                    hidden={manage.hidden}
                     embedded
                   />
                 ) : null}

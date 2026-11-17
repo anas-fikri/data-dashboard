@@ -122,6 +122,7 @@ describe("setDashboardFilterColumns", () => {
             available: true,
           },
         ],
+        hidden: 0,
       },
     });
     expect(prisma.dashboard.updateMany).toHaveBeenCalledWith({
@@ -210,7 +211,7 @@ describe("setDashboardFilterColumns", () => {
     prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
     expect(await svc.setDashboardFilterColumns(OWNER, DB, [])).toEqual({
       ok: true,
-      data: { filterColumns: [] },
+      data: { filterColumns: [], hidden: 0 },
     });
     expect(prisma.sheet.findMany).not.toHaveBeenCalled();
   });
@@ -471,5 +472,74 @@ describe("setDashboardColors: body tanpa colors", () => {
   it("undefined (field tidak dikirim) → INVALID, bukan menghapus template", async () => {
     expect(await svc.setDashboardColors(OWNER, DB, undefined)).toMatchObject({ code: "INVALID" });
     expect(prisma.dashboard.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("T-4q8n: kolom tak tersedia, penghitung editor, bawaan basi", () => {
+  // Gaji tersembunyi di versi aktif (SHEETS) → tidak tersedia.
+  const GAJI = {
+    sheet: "Penjualan",
+    column: "Gaji",
+    default: { column: "Gaji", op: "range", gte: 5 },
+  };
+
+  it("pemilik: kolom tak tersedia yang tidak diubah dipertahankan apa adanya (bawaan ikut)", async () => {
+    const { checkFilterColumns } = await import("@/features/dashboards/filter-columns");
+    const stored = storedFilterColumns([GAJI]);
+    const r = checkFilterColumns(
+      [
+        { sheet: "penjualan", column: "GAJI" },
+        { sheet: "Target", column: "Wilayah" },
+      ],
+      SHEETS,
+      stored,
+    );
+    expect(r).toEqual({
+      ok: true,
+      columns: [GAJI, { sheet: "Target", column: "Wilayah" }],
+    });
+    // Tanpa entri tersimpan: tetap ditolak (kolom baru harus tersedia).
+    expect(checkFilterColumns([{ sheet: "Penjualan", column: "Gaji" }], SHEETS).ok).toBe(false);
+  });
+
+  it("bawaan yang tidak cocok lagi dengan tipe kolom ditandai staleDefault (tidak dikirim)", () => {
+    const [v] = filterColumnViews(
+      storedFilterColumns([
+        {
+          sheet: "Penjualan",
+          column: "Cabang",
+          default: { column: "Cabang", op: "range", gte: 1 },
+        },
+      ]),
+      SHEETS,
+    );
+    expect(v).toMatchObject({ column: "Cabang", available: true, staleDefault: true });
+    expect(v!.default).toBeUndefined();
+  });
+
+  it("editor: hasil simpan membawa jumlah kolom tersembunyi yang dipertahankan", async () => {
+    prisma.dashboard.findFirst.mockResolvedValueOnce({
+      filterColumns: [GAJI, { sheet: "Penjualan", column: "Cabang" }],
+      dataset: { ownerId: "pemilik-lain", activeVersionId: VER },
+    });
+    prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
+    prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
+    const r = await svc.setDashboardFilterColumns(
+      OWNER,
+      DB,
+      [
+        { sheet: "Penjualan", column: "Cabang" },
+        { sheet: "Target", column: "Wilayah" },
+      ],
+      [{ sheet: "Penjualan", column: "Cabang" }],
+    );
+    expect(r.ok && r.data.filterColumns.map((c) => c.column)).toEqual(["Cabang", "Wilayah"]);
+    expect(r.ok && r.data.hidden).toBe(1);
+    // Kolom tersembunyi tetap tersimpan di belakang pilihan editor.
+    expect(prisma.dashboard.updateMany.mock.calls[0]![0].data.filterColumns).toEqual([
+      { sheet: "Penjualan", column: "Cabang" },
+      { sheet: "Target", column: "Wilayah" },
+      GAJI,
+    ]);
   });
 });
