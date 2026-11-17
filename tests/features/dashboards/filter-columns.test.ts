@@ -519,6 +519,19 @@ describe("T-4q8n: kolom tak tersedia, penghitung editor, bawaan basi", () => {
       [],
     );
     expect(guess).toMatchObject({ ok: false, code: "INVALID" });
+    // T-v42a: petunjuk muat ulang — sama untuk nama yang tersimpan maupun tebakan (tanpa oracle).
+    expect(guess.ok ? "" : guess.message).toContain("muat ulang halaman");
+    editorRow();
+    prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
+    const unknown = await svc.setDashboardFilterColumns(
+      OWNER,
+      DB,
+      [{ sheet: "Penjualan", column: "Entah" }],
+      [],
+    );
+    expect(unknown.ok ? "" : unknown.message.replace(/"[^"]*"/g, "")).toBe(
+      guess.ok ? "" : guess.message.replace(/"[^"]*"/g, ""),
+    );
     // Pemilik dengan tab basi (masih melihat kolom yang sudah dihapus orang lain) → STALE.
     prisma.dashboard.findFirst.mockResolvedValueOnce({
       filterColumns: [],

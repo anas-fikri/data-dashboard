@@ -244,7 +244,9 @@ export function overlappingFilterColumns(
 }
 
 export type CheckedFilterColumns =
-  { ok: true; columns: FilterColumn[] } | { ok: false; message: string };
+  | { ok: true; columns: FilterColumn[] }
+  /** `unavailable`: sheet/kolom tidak ada atau disembunyikan di versi aktif (T-v42a). */
+  | { ok: false; message: string; unavailable?: true };
 
 /**
  * Validasi daftar kolom filter dari pemilik/editor: bentuk, ≤ 8, nama kolom unik (juga antar-sheet: satu
@@ -295,11 +297,18 @@ export function checkFilterColumns(
         continue;
       }
     }
-    if (!sheet) return { ok: false, message: `Sheet "${p.data.sheet}" tidak ada di data aktif.` };
+    if (!sheet) {
+      return {
+        ok: false,
+        message: `Sheet "${p.data.sheet}" tidak ada di data aktif.`,
+        unavailable: true,
+      };
+    }
     if (!col || col.hidden) {
       return {
         ok: false,
         message: `Kolom "${p.data.column}" tidak ada atau disembunyikan di sheet "${sheet.name}".`,
+        unavailable: true,
       };
     }
     const d = p.data.default;

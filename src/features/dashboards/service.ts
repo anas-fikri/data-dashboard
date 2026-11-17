@@ -996,7 +996,16 @@ export async function setDashboardFilterColumns(
     // Pengecualian kolom tak tersedia yang tidak diubah hanya untuk pemilik: editor tidak pernah menerima
     // namanya, jadi tidak bisa menebak nama tersembunyi lewat simpanan yang berhasil (review T-4q8n #3).
     const checked = checkFilterColumns(columns, sheets, owner ? stored : []);
-    if (!checked.ok) return { kind: "invalid" as const, message: checked.message };
+    if (!checked.ok) {
+      // Editor (T-v42a): kolom yang baru saja disembunyikan pemilik dataset masih ada di daftar tab ini —
+      // beri petunjuk muat ulang. Pesan sama untuk semua kolom tak tersedia (tidak membedakan nama yang
+      // tersimpan, jadi tidak bisa dipakai menebak kolom tersembunyi).
+      const hint =
+        !owner && checked.unavailable
+          ? " Bila kolom ini baru saja disembunyikan pemilik dataset, muat ulang halaman."
+          : "";
+      return { kind: "invalid" as const, message: checked.message + hint };
+    }
     const next = owner ? checked : keepUnavailable(checked.columns, stored, sheets);
     if (!next.ok) return { kind: "invalid" as const, message: next.message };
     const r = await tx.dashboard.updateMany({
