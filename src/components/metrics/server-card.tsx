@@ -56,8 +56,11 @@ export function ServerCard({
   collapsed?: boolean;
   isAdmin: boolean;
   onExpand?: () => void;
-  /** Tautan di kartu dipakai (mis. drawer ponsel menutup diri dan memindahkan fokus, review T-h807 R3). */
-  onNavigate?: () => void;
+  /**
+   * Tautan di kartu dipakai — "online" (N user online) atau "detail" (Detail sumber daya): drawer ponsel
+   * menutup diri walau halaman tujuan sama dengan halaman sekarang (review T-h807 R3, T-rq35).
+   */
+  onNavigate?: (target: "online" | "detail") => void;
 }) {
   const { data, error } = usePolling<Response>({
     url: "/api/metrics",
@@ -121,7 +124,7 @@ export function ServerCardView({
   collapsed?: boolean;
   isAdmin: boolean;
   onExpand?: () => void;
-  onNavigate?: () => void;
+  onNavigate?: (target: "online" | "detail") => void;
 }) {
   // Dua salinan kartu (sidebar + drawer ponsel) → id judul unik.
   const titleId = useId();
@@ -242,6 +245,11 @@ export function ServerCardView({
             href="/admin/sumber-daya"
             className="rounded-sm text-xs font-medium text-sidebar-primary underline-offset-2 hover:underline"
             data-testid="server-card-detail"
+            // Drawer ponsel menutup diri juga saat sudah di Sumber daya (T-rq35); klik bertombol pengubah tidak.
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              onNavigate?.("detail");
+            }}
           >
             Detail<span className="sr-only"> pemakaian server</span>
           </Link>
@@ -276,7 +284,7 @@ export function ServerCardView({
           // baru) tidak menyentuh tab ini; di drawer ponsel, drawer yang menutup dan memindahkan fokus (R3).
           onClick={(e) => {
             if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-            if (onNavigate) return onNavigate();
+            if (onNavigate) return onNavigate("online");
             if (window.location.pathname !== "/admin/pengguna") return;
             requestAnimationFrame(() =>
               document.getElementById("online")?.focus({ preventScroll: true }),

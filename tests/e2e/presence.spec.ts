@@ -143,3 +143,31 @@ test("Ponsel: tautan user online di drawer menutup drawer dan memfokus Sedang on
   await expect(drawer).toHaveCount(0);
   await expect(page.getByTestId("online-users")).toBeFocused();
 });
+
+test("Ponsel: Detail di drawer saat sudah di Sumber daya menutup drawer (T-rq35)", async ({
+  page,
+}) => {
+  await page.route("**/api/metrics", (r) =>
+    r.fulfill({
+      json: {
+        ok: true,
+        enabled: true,
+        available: true,
+        latest: null,
+        series: [],
+        queue: null,
+        online: 1,
+      },
+    }),
+  );
+  await apiLogin(page, ADMIN);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/sumber-daya");
+  await page.getByTestId("drawer-open").click();
+  const drawer = page.getByTestId("drawer");
+  await drawer.getByTestId("server-card-detail").click();
+  await expect(drawer).toHaveCount(0);
+  await expect(page).toHaveURL(/\/admin\/sumber-daya$/);
+  // Fokus kembali ke tombol menu (bukan hilang ke <body>).
+  await expect(page.getByTestId("drawer-open")).toBeFocused();
+});

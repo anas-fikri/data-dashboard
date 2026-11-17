@@ -191,8 +191,8 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
                   <ServerCard
                     className="p-2"
                     isAdmin={isAdmin}
-                    onNavigate={() => {
-                      focusOnline.current = true;
+                    onNavigate={(target) => {
+                      focusOnline.current = target === "online";
                       setDrawerOpen(false);
                     }}
                   />
