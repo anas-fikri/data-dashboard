@@ -1471,3 +1471,27 @@ bash deploy/server-release.sh 1.22.1
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.22.0 aman.
+
+## 45. Rilis v1.23.0 (MIGRASI — `--full`)
+
+Unduhan + warna level (T-7c8v, T-yye9, T-c2bh, T-se9h):
+
+- Widget: ikon unduh → **Gambar (PNG)** (lewat renderer, filter aktif), CSV, Excel.
+- Kepala dashboard: **Unduh dashboard** → PDF, Gambar (PNG satu halaman), Halaman (HTML snapshot statis, tanpa skrip).
+- Warna level tinggi/sedang/rendah aktif otomatis (bawaan _makin tinggi makin baik_); dashboard/widget bisa _Tanpa
+  warna_; warna level ikut tema grafik bila template belum dipilih. **Tampilan dashboard lama berubah** (nilai tanpa
+  penilaian kini berwarna).
+- Migrasi `20261117000000_export_png_html`: `ALTER TYPE "ExportFormat" ADD VALUE 'PNG' / 'HTML'` (maju saja, cepat).
+- Next.js 16.4.5 (advisori GHSA-mfr8-8qww-v76h). Renderer ikut dibangun ulang (format PNG/HTML).
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.23.0 --full
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33; disk sempit → `MIN_FREE_GB=12` seperti §44.)
+Lalu seed panduan `viewer-lihat-filter-ekspor,susun-dashboard` (runbook "Isi panduan").
+
+**Rollback** ke v1.22.x: nilai enum PNG/HTML tetap di DB (tidak dipakai versi lama; ekspor PNG/HTML lama kedaluwarsa
+sendiri). Dashboard yang sudah memilih penilaian _Tanpa warna_ dibaca versi lama sebagai pengaturan warna kosong
+(tema kembali bawaan) — atur ulang setelah rollback bila perlu.
