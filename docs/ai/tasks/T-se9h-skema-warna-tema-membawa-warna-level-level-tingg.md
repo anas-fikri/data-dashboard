@@ -2,14 +2,52 @@
 id: T-se9h
 title: 'Skema warna: tema membawa warna level; level tinggi/normal/rendah otomatis aktif bawaan (arah makin tinggi makin baik),…'
 status: in_review
-profile: standard
+profile: strict
 created: "2026-11-17T07:28:08Z"
-updated: "2026-11-17T08:23:55Z"
+updated: "2026-11-17T08:31:37Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 115d670758b76a83a203fa455ed07dd50760fe52
+paths:
+  - content/panduan/06-susun-dashboard.md
+  - content/panduan/09-viewer-lihat-filter-ekspor.md
+  - package-lock.json
+  - package.json
+  - prisma/migrations/20261117000000_export_png_html/migration.sql
+  - prisma/schema.prisma
+  - renderer/render.ts
+  - renderer/renderer.ts
+  - src/components/dashboards/dashboard-colors-control.tsx
+  - src/components/dashboards/dashboard-pdf-export.tsx
+  - src/components/dashboards/filters/filter-context.tsx
+  - src/components/widgets/dashboard-colors.tsx
+  - src/components/widgets/export-menu.tsx
+  - src/components/widgets/export-model.ts
+  - src/components/widgets/export-status.tsx
+  - src/features/exports/filename.ts
+  - src/features/exports/http.ts
+  - src/features/exports/pdf-job.ts
+  - src/features/exports/render-session.ts
+  - src/features/exports/render-token.ts
+  - src/features/exports/renderer-client.ts
+  - src/features/exports/repo.ts
+  - src/features/exports/schema.ts
+  - src/features/exports/service.ts
+  - src/features/exports/types.ts
+  - src/features/whats-new/entries.ts
+  - src/features/widgets/tone.ts
+  - src/lib/storage/exports.ts
+  - tests/components/pdf-export-ui.test.ts
+  - tests/e2e/chart-theme.spec.ts
+  - tests/e2e/exports.spec.ts
+  - tests/e2e/kpi-drill.spec.ts
+  - tests/e2e/status-colors.spec.ts
+  - tests/features/exports/pdf-job.test.ts
+  - tests/features/exports/render-formats.test.ts
+  - tests/features/widgets/tone-schema.test.ts
+  - tests/renderer/render.test.ts
 review:
   passes:
     - "n": 1
@@ -20,21 +58,21 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 226641
+    duration_ms: 200466
     summary: |-
       …vice":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1794903804831,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
-      {"level":40,"time":1794903807528,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
-      {"level":40,"time":1794903807534,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
-      {"level":40,"time":1794903807534,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794904281657,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
+      {"level":40,"time":1794904285776,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794904285778,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794904285780,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
 
        Test Files  256 passed | 1 skipped (257)
             Tests  3413 passed | 10 skipped (3423)
-         Start at  08:21:19
-         Duration  138.64s (tests 81%, import 16%, transform 3%)
+         Start at  08:29:21
+         Duration  134.30s (tests 81%, import 16%, transform 3%)
 
-          Isolate  257 workers spawned · ~110ms startup each (spawn + environment, per file)
-                   at least ~9.30s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  257 workers spawned · ~105ms startup each (spawn + environment, per file)
+                   at least ~8.88s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.22.1 audit
@@ -42,12 +80,21 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-11-17T08:23:38Z"
+    at: "2026-11-17T08:31:36Z"
     tree: 7a5f0af4b0eeef41f13d72411ea59d939c404bf6c0f5f7fe124c8f676fe71ec2
+  commits:
+    - 115d670
+    - 77d1cfb
+    - a6b1061
+    - a74bd58
+    - e4e117a
+  acceptance:
+    total: 3
+    done: 3
   audit:
-    at: "2026-11-17T08:14:48Z"
+    at: "2026-11-17T08:24:25Z"
     passed: true
-    tree: 281158583044802876ef8c0deb61878564872490d55c019a13f04fd7b0b03d7d
+    tree: 7a5f0af4b0eeef41f13d72411ea59d939c404bf6c0f5f7fe124c8f676fe71ec2
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -55,7 +102,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
-          End status: 559 dirs visited, 6165 inodes visited, 1 Extract calls, 115.672055ms elapsed, 115.672269ms wall time
+          End status: 559 dirs visited, 6227 inodes visited, 1 Extract calls, 120.064594ms elapsed, 120.064833ms wall time
           Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
           No issues found
       - name: npm audit (prod high, dev critical)
@@ -99,3 +146,10 @@ Impact: tampilan semua dashboard lama berubah (nilai yang belum punya penilaian 
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tanpa file
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — PATCH warna tervalidasi dashboardColorsSchema strict
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — next dinaikkan ke 16.4.5; aitk audit hijau
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-11-17T08:31:36Z (200466 ms)
+- Acceptance criteria: 3/3 satisfied
+- Commits: 115d670, 77d1cfb, a6b1061, a74bd58, e4e117a
+- Review pass 1 by claude-reviewer-subagent: 0 findings
