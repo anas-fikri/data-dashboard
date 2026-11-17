@@ -40,6 +40,11 @@ export interface FilterColumnView {
   period?: true;
   /** Filter bawaan (T-vb7q), kolomnya = nama `column` di atas. */
   default?: DashFilter;
+  /**
+   * Bawaan tersimpan tidak cocok lagi dengan kolomnya (tipe diubah di skema, T-4q8n): tidak berlaku dan
+   * terhapus saat kolom filter disimpan berikutnya — pengaturan menandainya lebih dulu.
+   */
+  staleDefault?: true;
 }
 
 /** Kolom sumber filter dashboard + tipenya di versi aktif (null = tidak ada/disembunyikan). */
@@ -119,6 +124,7 @@ export function filterColumnViews(
       ...(f.default && (!a || defaultFits(f.default, a.col))
         ? { default: { ...f.default, column: a?.col.name ?? f.column } }
         : {}),
+      ...(f.default && a && !defaultFits(f.default, a.col) ? { staleDefault: true as const } : {}),
     };
   });
 }
@@ -243,11 +249,14 @@ export type CheckedFilterColumns =
 /**
  * Validasi daftar kolom filter dari pemilik/editor: bentuk, ≤ 8, nama kolom unik (juga antar-sheet: satu
  * kontrol per nama), dan setiap kolom ada serta tidak disembunyikan di versi aktif. Yang disimpan
- * adalah nama terkini dari skema.
+ * adalah nama terkini dari skema. Pengecualian (T-4q8n, pemilik): kolom tersimpan yang kini tidak tersedia
+ * boleh tetap ada di daftar — entri tersimpannya dipertahankan (bawaannya ikut bila entri masukan membawa
+ * bawaan), sehingga pemilik bisa menambah kolom lain atau menyimpan filter bawaan tanpa menghapusnya dulu.
  */
 export function checkFilterColumns(
   input: unknown,
   sheets: Pick<ActiveSheet, "name" | "schema">[],
+  stored: FilterColumn[] = [],
 ): CheckedFilterColumns {
   if (!Array.isArray(input)) return { ok: false, message: "Daftar kolom filter tidak valid." };
   if (input.length > FILTER_COLUMNS_MAX) {
@@ -271,8 +280,22 @@ export function checkFilterColumns(
     }
     seen.set(key, p.data.sheet);
     const sheet = sheetNamed(sheets, p.data.sheet);
+    const col = sheet ? columnNamed(sheet.schema ?? [], p.data.column) : undefined;
+    if (!sheet || !col || col.hidden) {
+      const same = filterColumnKey(p.data.sheet, p.data.column);
+      const kept = stored.find(
+        (f) => filterColumnKey(f.sheet, f.column) === same && !availableColumn(f, sheets),
+      );
+      if (kept) {
+        // Bawaannya ikut hanya bila dikirim (daftar pengaturan mengirim bawaan apa adanya); tanpa bawaan =
+        // dihapus, mis. "Hapus filter bawaan" (review T-4q8n #5). Isi bawaan = yang tersimpan.
+        columns.push(
+          p.data.default || !kept.default ? kept : { sheet: kept.sheet, column: kept.column },
+        );
+        continue;
+      }
+    }
     if (!sheet) return { ok: false, message: `Sheet "${p.data.sheet}" tidak ada di data aktif.` };
-    const col = columnNamed(sheet.schema ?? [], p.data.column);
     if (!col || col.hidden) {
       return {
         ok: false,

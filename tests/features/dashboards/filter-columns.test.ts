@@ -14,9 +14,15 @@ import {
  * T-012: kolom filter dashboard — validasi pengaturan pemilik (≤ 8, unik, ada dan tampil di versi
  * aktif), tampilan terhadap versi aktif, dan kolom cross-filter dari widget grafik. Prisma palsu.
  */
-const prisma = {
+const prisma: Record<string, unknown> & {
+  dashboard: { findFirst: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
+  sheet: { findMany: ReturnType<typeof vi.fn>; groupBy: ReturnType<typeof vi.fn> };
+} = {
   dashboard: { findFirst: vi.fn(), updateMany: vi.fn() },
   sheet: { findMany: vi.fn(), groupBy: vi.fn() },
+  // Transaksi T-4q8n: kunci dashboard lalu baca-tulis di tx (= prisma palsu yang sama).
+  $executeRaw: vi.fn(async () => 1),
+  $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
 };
 vi.mock("@/lib/db", () => ({ prisma }));
 
@@ -57,6 +63,38 @@ const owned = () =>
 beforeEach(() => vi.clearAllMocks());
 
 describe("setDashboardFilterColumns", () => {
+  it("T-4q8n: daftar yang dilihat (expected) sudah basi → STALE tanpa menulis; sama → tersimpan", async () => {
+    const stored = [{ sheet: "Penjualan", column: "Cabang" }];
+    const withStored = () =>
+      prisma.dashboard.findFirst.mockResolvedValueOnce({
+        filterColumns: stored,
+        dataset: { ownerId: OWNER, activeVersionId: VER },
+      });
+    withStored();
+    prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
+    const stale = await svc.setDashboardFilterColumns(
+      OWNER,
+      DB,
+      [{ sheet: "Target", column: "Wilayah" }],
+      [], // tab basi: dibuka sebelum kolom Cabang ditambahkan orang lain
+    );
+    expect(stale).toMatchObject({ ok: false, code: "STALE" });
+    expect(prisma.dashboard.updateMany).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).toHaveBeenCalled(); // kunci dashboard sebelum membaca
+
+    withStored();
+    prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
+    prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
+    const fresh = await svc.setDashboardFilterColumns(
+      OWNER,
+      DB,
+      [...stored, { sheet: "Target", column: "Wilayah" }],
+      [{ sheet: " penjualan", column: "CABANG" }], // ejaan berbeda, kunci sama
+    );
+    expect(fresh.ok).toBe(true);
+    expect(prisma.dashboard.updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it("disimpan dengan nama terkini dari skema; hasil = tampilan kolom filter", async () => {
     owned();
     prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
@@ -84,6 +122,7 @@ describe("setDashboardFilterColumns", () => {
             available: true,
           },
         ],
+        hidden: 0,
       },
     });
     expect(prisma.dashboard.updateMany).toHaveBeenCalledWith({
@@ -172,7 +211,7 @@ describe("setDashboardFilterColumns", () => {
     prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
     expect(await svc.setDashboardFilterColumns(OWNER, DB, [])).toEqual({
       ok: true,
-      data: { filterColumns: [] },
+      data: { filterColumns: [], hidden: 0 },
     });
     expect(prisma.sheet.findMany).not.toHaveBeenCalled();
   });
@@ -433,5 +472,116 @@ describe("setDashboardColors: body tanpa colors", () => {
   it("undefined (field tidak dikirim) → INVALID, bukan menghapus template", async () => {
     expect(await svc.setDashboardColors(OWNER, DB, undefined)).toMatchObject({ code: "INVALID" });
     expect(prisma.dashboard.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("T-4q8n: kolom tak tersedia, penghitung editor, bawaan basi", () => {
+  // Gaji tersembunyi di versi aktif (SHEETS) → tidak tersedia.
+  const GAJI = {
+    sheet: "Penjualan",
+    column: "Gaji",
+    default: { column: "Gaji", op: "range", gte: 5 },
+  };
+
+  it("pemilik: kolom tak tersedia dipertahankan; bawaannya ikut bila dikirim, tanpa bawaan = dihapus", async () => {
+    const { checkFilterColumns } = await import("@/features/dashboards/filter-columns");
+    const stored = storedFilterColumns([GAJI]);
+    const kept = checkFilterColumns(
+      [
+        { sheet: "penjualan", column: "GAJI", default: { column: "Gaji", op: "range", gte: 5 } },
+        { sheet: "Target", column: "Wilayah" },
+      ],
+      SHEETS,
+      stored,
+    );
+    expect(kept).toEqual({ ok: true, columns: [GAJI, { sheet: "Target", column: "Wilayah" }] });
+    // "Hapus filter bawaan": entri tanpa bawaan → bawaan kolom tak tersedia ikut terhapus (review #5).
+    expect(checkFilterColumns([{ sheet: "Penjualan", column: "Gaji" }], SHEETS, stored)).toEqual({
+      ok: true,
+      columns: [{ sheet: "Penjualan", column: "Gaji" }],
+    });
+    // Tanpa entri tersimpan: tetap ditolak (kolom baru harus tersedia).
+    expect(checkFilterColumns([{ sheet: "Penjualan", column: "Gaji" }], SHEETS).ok).toBe(false);
+  });
+
+  it("editor tidak bisa menebak nama kolom tersembunyi; tab basi dapat STALE sebelum galat kolom", async () => {
+    const editorRow = () =>
+      prisma.dashboard.findFirst.mockResolvedValueOnce({
+        filterColumns: [GAJI],
+        dataset: { ownerId: "pemilik-lain", activeVersionId: VER },
+      });
+    editorRow();
+    prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
+    const guess = await svc.setDashboardFilterColumns(
+      OWNER,
+      DB,
+      [{ sheet: "Penjualan", column: "Gaji" }],
+      [],
+    );
+    expect(guess).toMatchObject({ ok: false, code: "INVALID" });
+    // Pemilik dengan tab basi (masih melihat kolom yang sudah dihapus orang lain) → STALE.
+    prisma.dashboard.findFirst.mockResolvedValueOnce({
+      filterColumns: [],
+      dataset: { ownerId: OWNER, activeVersionId: VER },
+    });
+    prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
+    const stale = await svc.setDashboardFilterColumns(
+      OWNER,
+      DB,
+      [GAJI, { sheet: "Target", column: "Wilayah" }],
+      [GAJI],
+    );
+    expect(stale).toMatchObject({ ok: false, code: "STALE" });
+    expect(prisma.dashboard.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("kunci lama/bentrok saat simpan → BUSY, bukan 500", async () => {
+    const { Prisma } = await import("@prisma/client");
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("timeout", { code: "P2028", clientVersion: "x" }),
+    );
+    const r = await svc.setDashboardFilterColumns(OWNER, DB, [], []);
+    expect(r).toMatchObject({ ok: false, code: "BUSY" });
+  });
+
+  it("bawaan yang tidak cocok lagi dengan tipe kolom ditandai staleDefault (tidak dikirim)", () => {
+    const [v] = filterColumnViews(
+      storedFilterColumns([
+        {
+          sheet: "Penjualan",
+          column: "Cabang",
+          default: { column: "Cabang", op: "range", gte: 1 },
+        },
+      ]),
+      SHEETS,
+    );
+    expect(v).toMatchObject({ column: "Cabang", available: true, staleDefault: true });
+    expect(v!.default).toBeUndefined();
+  });
+
+  it("editor: hasil simpan membawa jumlah kolom tersembunyi yang dipertahankan", async () => {
+    prisma.dashboard.findFirst.mockResolvedValueOnce({
+      filterColumns: [GAJI, { sheet: "Penjualan", column: "Cabang" }],
+      dataset: { ownerId: "pemilik-lain", activeVersionId: VER },
+    });
+    prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
+    prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
+    const r = await svc.setDashboardFilterColumns(
+      OWNER,
+      DB,
+      [
+        { sheet: "Penjualan", column: "Cabang" },
+        { sheet: "Target", column: "Wilayah" },
+      ],
+      [{ sheet: "Penjualan", column: "Cabang" }],
+    );
+    expect(r.ok && r.data.filterColumns.map((c) => c.column)).toEqual(["Cabang", "Wilayah"]);
+    expect(r.ok && r.data.hidden).toBe(1);
+    // Kolom tersembunyi tetap tersimpan di belakang pilihan editor.
+    expect(prisma.dashboard.updateMany.mock.calls[0]![0].data.filterColumns).toEqual([
+      { sheet: "Penjualan", column: "Cabang" },
+      { sheet: "Target", column: "Wilayah" },
+      GAJI,
+    ]);
   });
 });

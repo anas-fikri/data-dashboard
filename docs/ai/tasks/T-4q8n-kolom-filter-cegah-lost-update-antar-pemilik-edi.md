@@ -1,30 +1,560 @@
 ---
 id: T-4q8n
 title: 'Kolom filter: cegah lost update antar pemilik/editor + rapikan batas editor'
-status: todo
-profile: standard
+status: done
+profile: strict
 tags:
   - security
   - ui
 created: "2026-10-22T10:45:53Z"
-updated: "2026-10-22T11:22:45Z"
+updated: "2026-11-17T11:04:50Z"
+closed: "2026-11-17T11:04:50Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/cool-babbage-t5yojt
+base: 32e2388f3dcd86785e85f1f20adcf500381b4cd1
+paths:
+  - CHANGELOG.md
+  - content/panduan/06-susun-dashboard.md
+  - content/panduan/09-viewer-lihat-filter-ekspor.md
+  - docs/runbook-deploy.md
+  - package-lock.json
+  - package.json
+  - prisma/migrations/20261117000000_export_png_html/migration.sql
+  - prisma/schema.prisma
+  - renderer/render.ts
+  - renderer/renderer.ts
+  - src/app/(app)/dashboards/[id]/page.tsx
+  - src/components/dashboards/dashboard-api.ts
+  - src/components/dashboards/dashboard-canvas.tsx
+  - src/components/dashboards/dashboard-colors-control.tsx
+  - src/components/dashboards/dashboard-pdf-export.tsx
+  - src/components/dashboards/filter-columns-settings.tsx
+  - src/components/dashboards/filter-columns-store.ts
+  - src/components/dashboards/filters/default-filters.tsx
+  - src/components/dashboards/filters/filter-bar.tsx
+  - src/components/dashboards/filters/filter-context.tsx
+  - src/components/widgets/dashboard-colors.tsx
+  - src/components/widgets/export-menu.tsx
+  - src/components/widgets/export-model.ts
+  - src/components/widgets/export-status.tsx
+  - src/features/dashboards/filter-columns.ts
+  - src/features/dashboards/http.ts
+  - src/features/dashboards/service.ts
+  - src/features/exports/filename.ts
+  - src/features/exports/http.ts
+  - src/features/exports/pdf-job.ts
+  - src/features/exports/render-session.ts
+  - src/features/exports/render-token.ts
+  - src/features/exports/renderer-client.ts
+  - src/features/exports/repo.ts
+  - src/features/exports/schema.ts
+  - src/features/exports/service.ts
+  - src/features/exports/types.ts
+  - src/features/whats-new/entries.ts
+  - src/features/widgets/tone.ts
+  - src/lib/storage/exports.ts
+  - tests/components/filter-columns-multisheet.test.ts
+  - tests/components/pdf-export-ui.test.ts
+  - tests/e2e/chart-theme.spec.ts
+  - tests/e2e/exports.spec.ts
+  - tests/e2e/kpi-drill.spec.ts
+  - tests/e2e/status-colors.spec.ts
+  - tests/features/dashboards/filter-columns.test.ts
+  - tests/features/exports/pdf-job.test.ts
+  - tests/features/exports/render-formats.test.ts
+  - tests/features/widgets/tone-schema.test.ts
+  - tests/renderer/render.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-17T10:42:59Z"
+      findings: 7
+    - "n": 2
+      by: claude-reviewer-subagent
+      at: "2026-11-17T10:49:58Z"
+      findings: 2
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-11-17T10:56:30Z"
+      findings: 0
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 224979
+    summary: |-
+      …vice":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1794913207876,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
+      {"level":40,"time":1794913212047,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794913212051,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794913212051,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+
+       Test Files  257 passed | 1 skipped (258)
+            Tests  3422 passed | 10 skipped (3432)
+         Start at  10:57:47
+         Duration  152.73s (tests 81%, import 16%, transform 3%)
+
+          Isolate  258 workers spawned · ~115ms startup each (spawn + environment, per file)
+                   at least ~9.78s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@1.23.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-11-17T11:00:21Z"
+    tree: 8637c81f2c9f68224917a71de0cb6a8e1e5ab967e0c960a6d45124adc168f756
+  commits:
+    - 000f2ab
+    - 0141cc8
+    - 022c31b
+    - 027d640
+    - "0305653"
+    - "0380793"
+    - 06f26ff
+    - 07c429f
+    - 083808b
+    - 09e9b98
+    - 0b900f3
+    - 0c43f39
+    - 0cd20d0
+    - 0de3280
+    - 0e6065c
+    - 0f0bc44
+    - 0f5241b
+    - 0f62982
+    - 0fca086
+    - 10be0fe
+    - 1113f25
+    - 1146ff1
+    - 115d670
+    - 117aed1
+    - 12c9032
+    - 139ea63
+    - 13d2307
+    - 14edcb2
+    - 170b893
+    - 1777cf3
+    - 1782e3e
+    - 17deb57
+    - 18843ed
+    - 1892c10
+    - 18ad0a8
+    - 19af165
+    - 19b430b
+    - 1a1a432
+    - 1b4b6f3
+    - 1c79106
+    - 1d723f8
+    - 1dc1a3a
+    - 1f127d7
+    - 1f34fb1
+    - 1fa2a2b
+    - 1faf55a
+    - 202826f
+    - 21e2b9e
+    - 226f64b
+    - 238a69d
+    - 23f1d09
+    - "2472318"
+    - 24e0d05
+    - 25abf41
+    - 25febea
+    - 26454a6
+    - "2762863"
+    - 280999b
+    - 28a8b1a
+    - 2a3404c
+    - 2a4785d
+    - 2b1c079
+    - 2b33214
+    - 2b8d5ed
+    - 2c75eb4
+    - 2dc0d7f
+    - 2dfe3e2
+    - 2eb204f
+    - 2f5faf1
+    - 2ffcafe
+    - 30117b9
+    - 30e4fd7
+    - 3171ffa
+    - 320d807
+    - 32e2388
+    - 33058d5
+    - 343ac0c
+    - "3455182"
+    - 347467d
+    - 353960b
+    - 355944b
+    - 35c6781
+    - 36c9f18
+    - 397b666
+    - 39adbb7
+    - 39f6a65
+    - 3b06bc5
+    - 3b2fd96
+    - 3b6ad9e
+    - 3ba900a
+    - 3d6b854
+    - 3db23b5
+    - 3ff373d
+    - 4084a12
+    - 40a9727
+    - 419c00f
+    - 41ef202
+    - 428de0e
+    - 4299c61
+    - "4300729"
+    - "4311e88"
+    - 434c0b7
+    - 441a240
+    - "4476096"
+    - 45146c1
+    - 4530e0b
+    - 472cdb7
+    - 480fe60
+    - "4850467"
+    - 491b443
+    - 49c37c9
+    - 4a2e710
+    - 4a32c9e
+    - 4a9c1bc
+    - 4e6347e
+    - 4fa9ec8
+    - 4fbb304
+    - 4fcedbe
+    - 515f654
+    - 51f63b2
+    - 51fa41a
+    - 52d859a
+    - 53b72de
+    - 5448b90
+    - 562459f
+    - 56ac448
+    - 57dda72
+    - 5815e7e
+    - 589ab6c
+    - 58fd0d2
+    - 5931b03
+    - 5a2674d
+    - 5b25e15
+    - 5d23aff
+    - 5d77b85
+    - 6237d6d
+    - 625cf78
+    - 632f35b
+    - 63a7f03
+    - 648ad69
+    - 64c3c85
+    - "6574710"
+    - 669a30f
+    - 681c251
+    - 683ea1f
+    - 696c370
+    - "6981253"
+    - 698c88f
+    - 6a5906f
+    - 6a79470
+    - 6aca388
+    - 6af2ee7
+    - 6b5c285
+    - 6ba502f
+    - 6c4bc8b
+    - 6c7c4f8
+    - 6ccdd65
+    - 6da3590
+    - 7012c26
+    - 711beaf
+    - 7248a58
+    - 7288cca
+    - "7336191"
+    - 741a155
+    - 7521e9d
+    - 7552f30
+    - "76492e3"
+    - 76c1d1c
+    - 77a5cd1
+    - 77d1cfb
+    - 77df3bc
+    - 7809c7d
+    - 79246cf
+    - "79e0222"
+    - 7d1d4e0
+    - 7d52d9a
+    - 7dc7885
+    - 7ddd569
+    - 7deab10
+    - 7e67256
+    - 7e996ac
+    - 803bb7b
+    - "8049e15"
+    - 80cc079
+    - 8124f7c
+    - 82cff9b
+    - 8325cf5
+    - 83c6e64
+    - 84ba18e
+    - 850026f
+    - 85626d5
+    - 856bae9
+    - 86636d7
+    - 8741bf3
+    - 87a6961
+    - 88ad754
+    - 8b0a10f
+    - 8b7909f
+    - 8c0eaa9
+    - 8c7f091
+    - 8cbe086
+    - 8ce4cc3
+    - 8d5bf1d
+    - 8dc3860
+    - 8e808c9
+    - "9062618"
+    - 9094f41
+    - 914b030
+    - 92ee216
+    - "9416e47"
+    - 944d177
+    - 957a6dd
+    - 95a30ac
+    - 95b7bc9
+    - 95f55db
+    - 95f7b45
+    - 96102f2
+    - 973629c
+    - 973f5ad
+    - "9803850"
+    - "9980959"
+    - 99eea5c
+    - 9ab9fd1
+    - 9b62f18
+    - 9b88ac2
+    - 9ba7b00
+    - 9c9b2f2
+    - 9ca8a2a
+    - 9cfda54
+    - 9e468f4
+    - 9ebacef
+    - 9ee22e2
+    - 9ef1150
+    - a03f3f1
+    - a04e7fb
+    - a079f81
+    - a085d62
+    - a12fcfb
+    - a1818c4
+    - a18c5e1
+    - a19d688
+    - a2d6c0a
+    - a489cb3
+    - a544a24
+    - a5b5bfa
+    - a6b1061
+    - a70a59a
+    - a725c7b
+    - a74bd58
+    - a77fe1b
+    - aa93391
+    - ace71fc
+    - aec3bbe
+    - aff74e4
+    - b1036b4
+    - b1e545a
+    - b285387
+    - b37b39c
+    - b421bcc
+    - b43e7d6
+    - b4d9cbb
+    - b714998
+    - b75d6d8
+    - b7ddea3
+    - b7efc59
+    - b81d108
+    - b8217ca
+    - b83360b
+    - b980c2c
+    - ba29099
+    - ba74587
+    - bae5de1
+    - be7c569
+    - bea7eec
+    - bf7ef78
+    - bf81be6
+    - c09567f
+    - c0fdc24
+    - c290537
+    - c2d9cee
+    - c3eb267
+    - c4eab09
+    - c4f995f
+    - c54305e
+    - c55aa75
+    - c5f372b
+    - c70623a
+    - c7ca1a6
+    - c917a8e
+    - c9d3a79
+    - ca19b21
+    - cad7698
+    - cb2bb63
+    - cb50be9
+    - cc560e5
+    - ccd8e58
+    - cd206e3
+    - cf10253
+    - cf9ced4
+    - d0d1fdf
+    - d271413
+    - d3794b5
+    - d44e938
+    - d56a607
+    - d5afd43
+    - d5d36a3
+    - d614a7b
+    - d6d31c9
+    - d7bc81b
+    - d7d32e5
+    - d97c497
+    - da9dbbf
+    - db12a13
+    - dbd8335
+    - dce1add
+    - dcf39e5
+    - dd070f5
+    - dd124a1
+    - dd94740
+    - ddfd307
+    - de9b9f2
+    - def261a
+    - df88720
+    - e099ea2
+    - e09fb33
+    - e1414ab
+    - e1a05ba
+    - e2c8065
+    - e3951a1
+    - e4b98f0
+    - e4e117a
+    - e6020f2
+    - e675445
+    - e6e94a4
+    - e7488c7
+    - e785231
+    - e78906d
+    - e82f68a
+    - e85dcdd
+    - e9978ed
+    - ea05d98
+    - ea61a3f
+    - eaa3c13
+    - eae474e
+    - eb11b82
+    - ee21607
+    - ee92331
+    - ef3422a
+    - ef394be
+    - ef427f1
+    - ef7600f
+    - f1d0196
+    - f21a6ec
+    - f256b4d
+    - f327efe
+    - f37ba46
+    - f3beaef
+    - f4b549f
+    - f5246f0
+    - f56c021
+    - f6049ca
+    - f68d56b
+    - f750d27
+    - f7cf853
+    - f8d9189
+    - f9659c2
+    - f992638
+    - f994079
+    - fbe9431
+    - fd03bed
+    - fd268b0
+    - fd66af5
+    - fe9e9a2
+    - ff2deb1
+    - ffc9089
+  acceptance:
+    total: 8
+    done: 8
+  audit:
+    at: "2026-11-17T11:00:22Z"
+    passed: true
+    tree: 8637c81f2c9f68224917a71de0cb6a8e1e5ab967e0c960a6d45124adc168f756
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
+          End status: 559 dirs visited, 6363 inodes visited, 1 Extract calls, 145.181428ms elapsed, 145.181659ms wall time
+          Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@1.23.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
 Lanjutan review T-k2ec (temuan non-blokir). Simpan kolom filter memakai revisi/lock sehingga tab basi tidak menimpa perubahan orang lain, baca-tulis kolom tersembunyi dalam satu transaksi, penghitung editor ikut kolom tersembunyi, pemilik bisa menambah kolom saat ada kolom tidak tersedia, dan peringatan tumpang-tindih sheet untuk editor.
 
 ## Acceptance criteria
-- [ ] Simpan kolom filter dari daftar basi → CONFLICT/STALE dengan pesan muat ulang, bukan menimpa diam-diam (review T-k2ec #1)
-- [ ] Baca kolom tersimpan + tulis dalam satu transaksi lockDashboard (review T-k2ec #2)
-- [ ] Penghitung/batas penuh editor menghitung kolom tersembunyi yang dipertahankan (review T-k2ec #3)
-- [ ] Pemilik bisa menambah kolom walau ada kolom tersimpan tidak tersedia yang tidak diubah (review T-k2ec #4)
-- [ ] Editor diberi tahu bila kolom filter yang ditambahkan menyaring lebih dari satu sheet (review T-k2ec #6)
-- [ ] Pemilik bisa menyimpan filter bawaan walau ada kolom filter tidak tersedia (review T-vb7q #2)
-- [ ] Cadangan PDF saat status filter belum diterbitkan memakai filter bawaan (review T-vb7q #3)
-- [ ] Bawaan basi (tipe kolom diubah) ditandai di pengaturan sebelum terhapus saat simpan berikutnya (review T-vb7q pass 2 #1)
+- [x] Simpan kolom filter dari daftar basi → CONFLICT/STALE dengan pesan muat ulang, bukan menimpa diam-diam (review T-k2ec #1)
+- [x] Baca kolom tersimpan + tulis dalam satu transaksi lockDashboard (review T-k2ec #2)
+- [x] Penghitung/batas penuh editor menghitung kolom tersembunyi yang dipertahankan (review T-k2ec #3)
+- [x] Pemilik bisa menambah kolom walau ada kolom tersimpan tidak tersedia yang tidak diubah (review T-k2ec #4)
+- [x] Editor diberi tahu bila kolom filter yang ditambahkan menyaring lebih dari satu sheet (review T-k2ec #6)
+- [x] Pemilik bisa menyimpan filter bawaan walau ada kolom filter tidak tersedia (review T-vb7q #2)
+- [x] Cadangan PDF saat status filter belum diterbitkan memakai filter bawaan (review T-vb7q #3)
+- [x] Bawaan basi (tipe kolom diubah) ditandai di pengaturan sebelum terhapus saat simpan berikutnya (review T-vb7q pass 2 #1)
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Impact: simpan kolom filter (pemilik/editor) dan filter bawaan; cadangan filter ekspor PDF/PNG/HTML. Tanpa migrasi. Security (STRIDE): Tampering — simpan basi ditolak STALE (tanpa lost update); akses dibaca setelah kunci dashboard (tanpa TOCTOU); editor tetap tidak menerima nama kolom tak tersedia (hanya jumlahnya). Rollback: image sebelumnya; klien lama tanpa `expected` tetap diterima (tanpa cek basi). Validation: uji unit filter-columns/pdf-export-ui/multisheet, e2e sharing + filters + exports.
 
 ## Notes
+- 2026-11-17T09:23:29Z AC1/AC2: expected + transaksi lockDashboard; unit + e2e sharing/filters lulus.
+- 2026-11-17T10:56:31Z Review 3 putaran (7 Low → diperbaiki; R2 1 Medium lost update → diperbaiki, 1 Low → T-v42a; R3 0). Unit 1117 + e2e sharing/filters 49 lulus.
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — batas kepercayaan tetap: browser → PATCH /api/dashboards/[id]/filter-columns → transaksi Postgres
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak ada perubahan autentikasi
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: sesi tidak berubah
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — canEditWhere dibaca setelah lockDashboard di transaksi yang sama; editor hanya menerima jumlah kolom tak tersedia, bukan namanya
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — `expected` diurai lewat storedFilterColumns (zod, entri rusak dibuang); daftar baru tetap lewat checkFilterColumns
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tanpa data rahasia baru
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — STALE = 409 dengan pesan muat ulang, tanpa detail internal
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — N/A: hanya pengaturan dashboard
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tanpa lalu lintas baru
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — tanpa dependensi atau panggilan jaringan baru
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — lost update dicegah (STALE + kunci dashboard); batas 8 kolom termasuk kolom tersembunyi
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tanpa file
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — body PATCH divalidasi; `expected` opsional untuk klien lama
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: konfigurasi tidak berubah
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-11-17T11:00:21Z (224979 ms)
+- Acceptance criteria: 8/8 satisfied
+- Commits: 000f2ab, 0141cc8, 022c31b, 027d640, 0305653, 0380793, 06f26ff, 07c429f, 083808b, 09e9b98, 0b900f3, 0c43f39, 0cd20d0, 0de3280, 0e6065c, 0f0bc44, 0f5241b, 0f62982, 0fca086, 10be0fe, 1113f25, 1146ff1, 115d670, 117aed1, 12c9032, 139ea63, 13d2307, 14edcb2, 170b893, 1777cf3, 1782e3e, 17deb57, 18843ed, 1892c10, 18ad0a8, 19af165, 19b430b, 1a1a432, 1b4b6f3, 1c79106, 1d723f8, 1dc1a3a, 1f127d7, 1f34fb1, 1fa2a2b, 1faf55a, 202826f, 21e2b9e, 226f64b, 238a69d, 23f1d09, 2472318, 24e0d05, 25abf41, 25febea, 26454a6, 2762863, 280999b, 28a8b1a, 2a3404c, 2a4785d, 2b1c079, 2b33214, 2b8d5ed, 2c75eb4, 2dc0d7f, 2dfe3e2, 2eb204f, 2f5faf1, 2ffcafe, 30117b9, 30e4fd7, 3171ffa, 320d807, 32e2388, 33058d5, 343ac0c, 3455182, 347467d, 353960b, 355944b, 35c6781, 36c9f18, 397b666, 39adbb7, 39f6a65, 3b06bc5, 3b2fd96, 3b6ad9e, 3ba900a, 3d6b854, 3db23b5, 3ff373d, 4084a12, 40a9727, 419c00f, 41ef202, 428de0e, 4299c61, 4300729, 4311e88, 434c0b7, 441a240, 4476096, 45146c1, 4530e0b, 472cdb7, 480fe60, 4850467, 491b443, 49c37c9, 4a2e710, 4a32c9e, 4a9c1bc, 4e6347e, 4fa9ec8, 4fbb304, 4fcedbe, 515f654, 51f63b2, 51fa41a, 52d859a, 53b72de, 5448b90, 562459f, 56ac448, 57dda72, 5815e7e, 589ab6c, 58fd0d2, 5931b03, 5a2674d, 5b25e15, 5d23aff, 5d77b85, 6237d6d, 625cf78, 632f35b, 63a7f03, 648ad69, 64c3c85, 6574710, 669a30f, 681c251, 683ea1f, 696c370, 6981253, 698c88f, 6a5906f, 6a79470, 6aca388, 6af2ee7, 6b5c285, 6ba502f, 6c4bc8b, 6c7c4f8, 6ccdd65, 6da3590, 7012c26, 711beaf, 7248a58, 7288cca, 7336191, 741a155, 7521e9d, 7552f30, 76492e3, 76c1d1c, 77a5cd1, 77d1cfb, 77df3bc, 7809c7d, 79246cf, 79e0222, 7d1d4e0, 7d52d9a, 7dc7885, 7ddd569, 7deab10, 7e67256, 7e996ac, 803bb7b, 8049e15, 80cc079, 8124f7c, 82cff9b, 8325cf5, 83c6e64, 84ba18e, 850026f, 85626d5, 856bae9, 86636d7, 8741bf3, 87a6961, 88ad754, 8b0a10f, 8b7909f, 8c0eaa9, 8c7f091, 8cbe086, 8ce4cc3, 8d5bf1d, 8dc3860, 8e808c9, 9062618, 9094f41, 914b030, 92ee216, 9416e47, 944d177, 957a6dd, 95a30ac, 95b7bc9, 95f55db, 95f7b45, 96102f2, 973629c, 973f5ad, 9803850, 9980959, 99eea5c, 9ab9fd1, 9b62f18, 9b88ac2, 9ba7b00, 9c9b2f2, 9ca8a2a, 9cfda54, 9e468f4, 9ebacef, 9ee22e2, 9ef1150, a03f3f1, a04e7fb, a079f81, a085d62, a12fcfb, a1818c4, a18c5e1, a19d688, a2d6c0a, a489cb3, a544a24, a5b5bfa, a6b1061, a70a59a, a725c7b, a74bd58, a77fe1b, aa93391, ace71fc, aec3bbe, aff74e4, b1036b4, b1e545a, b285387, b37b39c, b421bcc, b43e7d6, b4d9cbb, b714998, b75d6d8, b7ddea3, b7efc59, b81d108, b8217ca, b83360b, b980c2c, ba29099, ba74587, bae5de1, be7c569, bea7eec, bf7ef78, bf81be6, c09567f, c0fdc24, c290537, c2d9cee, c3eb267, c4eab09, c4f995f, c54305e, c55aa75, c5f372b, c70623a, c7ca1a6, c917a8e, c9d3a79, ca19b21, cad7698, cb2bb63, cb50be9, cc560e5, ccd8e58, cd206e3, cf10253, cf9ced4, d0d1fdf, d271413, d3794b5, d44e938, d56a607, d5afd43, d5d36a3, d614a7b, d6d31c9, d7bc81b, d7d32e5, d97c497, da9dbbf, db12a13, dbd8335, dce1add, dcf39e5, dd070f5, dd124a1, dd94740, ddfd307, de9b9f2, def261a, df88720, e099ea2, e09fb33, e1414ab, e1a05ba, e2c8065, e3951a1, e4b98f0, e4e117a, e6020f2, e675445, e6e94a4, e7488c7, e785231, e78906d, e82f68a, e85dcdd, e9978ed, ea05d98, ea61a3f, eaa3c13, eae474e, eb11b82, ee21607, ee92331, ef3422a, ef394be, ef427f1, ef7600f, f1d0196, f21a6ec, f256b4d, f327efe, f37ba46, f3beaef, f4b549f, f5246f0, f56c021, f6049ca, f68d56b, f750d27, f7cf853, f8d9189, f9659c2, f992638, f994079, fbe9431, fd03bed, fd268b0, fd66af5, fe9e9a2, ff2deb1, ffc9089
+- Review pass 1 by claude-reviewer-subagent: 7 findings
+- Review pass 2 by claude-reviewer-subagent: 2 findings
+- Review pass 3 by claude-reviewer-subagent: 0 findings

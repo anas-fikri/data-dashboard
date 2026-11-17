@@ -235,6 +235,11 @@ export interface DashboardView {
    */
   filterColumns: FilterColumnView[];
   /**
+   * Kolom filter tersimpan yang TIDAK dikirim ke non-pemilik karena tidak tersedia (T-4q8n): tetap disimpan
+   * dan ikut batas 8, jadi penghitung editor menambahkannya. Pemilik: 0 (semua kolom ada di daftar).
+   */
+  filterColumnsHidden: number;
+  /**
    * Nama kolom dimensi grafik yang cross-filter-nya aktif (versi aktif, tidak disembunyikan): bersama
    * kolom filter, hanya kolom ini yang boleh dikirim sebagai filter dashboard (D6).
    */
@@ -816,6 +821,8 @@ export const getDashboard = cache(async function getDashboard(
     // Pemilik tetap melihat kolom filter yang hilang/disembunyikan (untuk diperbaiki di pengaturan);
     // non-pemilik tidak menerima namanya sama sekali (review T-016 / catatan T-011).
     filterColumns: role === "OWNER" ? filterColumns : filterColumns.filter((f) => f.available),
+    // Hanya editor yang membutuhkannya (penghitung batas); viewer tidak menerima apa pun (review T-4q8n #6).
+    filterColumnsHidden: role === "EDITOR" ? filterColumns.filter((f) => !f.available).length : 0,
     crossFilterColumns: crossFilterColumnsOf(widgets, sheets),
     colors: parseColors(d.colors),
   };
@@ -853,8 +860,13 @@ const CROSS_SOURCES: readonly string[] = [...CHART_TYPES, "pivot"];
 const isCrossSource = (type: string) => CROSS_SOURCES.includes(type);
 
 /** Sheet siap query di versi aktif (nama + skema), opsional hanya id tertentu. */
-async function activeSheets(versionId: string, ids?: string[]): Promise<ActiveSheet[]> {
-  const rows = await prisma.sheet.findMany({
+async function activeSheets(
+  versionId: string,
+  ids?: string[],
+  // Di dalam transaksi berkunci: pakai koneksi transaksi itu (tanpa koneksi pool kedua, review T-4q8n #2).
+  db: Pick<Tx, "sheet"> = prisma,
+): Promise<ActiveSheet[]> {
+  const rows = await db.sheet.findMany({
     where: { versionId, typedKey: { not: null }, ...(ids ? { id: { in: ids } } : {}) },
     orderBy: { index: "asc" },
     select: { id: true, name: true, schema: true, ...PERIOD_SHEET_SELECT },
@@ -934,34 +946,82 @@ export async function filterOverlapFor(dashboardId: string): Promise<string[]> {
  * viewer → FORBIDDEN): ≤ 8, unik, setiap kolom ada dan tampil di versi data aktif. Hasil: tampilan kolom
  * filter yang baru.
  */
+/** Bentuk pembanding daftar kolom filter: kunci + bawaan, urut sesuai daftar (T-4q8n). */
+function filterColumnsSignature(views: FilterColumnView[]): string {
+  return JSON.stringify(views.map((v) => [v.key, v.default ?? null]));
+}
+
 export async function setDashboardFilterColumns(
   userId: string,
   dashboardId: unknown,
   columns: unknown,
-): Promise<DashboardResult<{ filterColumns: FilterColumnView[] }>> {
+  /**
+   * Daftar kolom filter yang dilihat klien saat mulai mengubah (T-4q8n). Ada dan berbeda dari isi tersimpan
+   * (tampilan per peran) → STALE: tab basi tidak menimpa perubahan orang lain. Tidak ada = klien lama.
+   */
+  expected?: unknown,
+): Promise<DashboardResult<{ filterColumns: FilterColumnView[]; hidden: number }>> {
   if (!isIdShape(dashboardId)) return notFound();
-  const d = await prisma.dashboard.findFirst({
-    where: { id: dashboardId, ...canEditWhere(userId) },
-    select: { filterColumns: true, dataset: { select: { ownerId: true, activeVersionId: true } } },
+  // Baca isi tersimpan + tulis dalam satu transaksi di bawah kunci dashboard (review T-k2ec #2): dua simpan
+  // bersamaan tidak saling menimpa kolom tersembunyi, dan akses dibaca setelah kunci. Kunci lama/bentrok →
+  // BUSY seperti penulis dashboard lain (locked).
+  const out = await locked(async (tx) => {
+    await lockDashboard(tx, dashboardId);
+    const d = await tx.dashboard.findFirst({
+      where: { id: dashboardId, ...canEditWhere(userId) },
+      select: {
+        filterColumns: true,
+        dataset: { select: { ownerId: true, activeVersionId: true } },
+      },
+    });
+    if (!d) return { kind: "denied" as const };
+    const owner = d.dataset.ownerId === userId;
+    const versionId = d.dataset.activeVersionId;
+    const sheets = versionId ? await activeSheets(versionId, undefined, tx) : [];
+    const stored = storedFilterColumns(d.filterColumns);
+    const viewOf = (list: FilterColumn[]) => {
+      const views = filterColumnViews(list, sheets);
+      // Sama dengan getDashboard: non-pemilik tidak menerima nama kolom yang tidak tersedia.
+      return owner ? views : views.filter((f) => f.available);
+    };
+    // Basi dicek SEBELUM validasi: tab basi mendapat pesan muat ulang, bukan galat kolom yang sudah
+    // dihapus orang lain (review T-4q8n #4).
+    if (
+      expected !== undefined &&
+      filterColumnsSignature(viewOf(storedFilterColumns(expected))) !==
+        filterColumnsSignature(viewOf(stored))
+    ) {
+      return { kind: "stale" as const };
+    }
+    // Pengecualian kolom tak tersedia yang tidak diubah hanya untuk pemilik: editor tidak pernah menerima
+    // namanya, jadi tidak bisa menebak nama tersembunyi lewat simpanan yang berhasil (review T-4q8n #3).
+    const checked = checkFilterColumns(columns, sheets, owner ? stored : []);
+    if (!checked.ok) return { kind: "invalid" as const, message: checked.message };
+    const next = owner ? checked : keepUnavailable(checked.columns, stored, sheets);
+    if (!next.ok) return { kind: "invalid" as const, message: next.message };
+    const r = await tx.dashboard.updateMany({
+      where: { id: dashboardId, ...canEditWhere(userId) },
+      data: { filterColumns: next.columns as unknown as Prisma.InputJsonValue },
+    });
+    if (r.count !== 1) return { kind: "denied" as const };
+    const all = filterColumnViews(next.columns, sheets);
+    return {
+      kind: "ok" as const,
+      views: viewOf(next.columns),
+      hidden: owner ? 0 : all.filter((f) => !f.available).length,
+    };
   });
-  if (!d) return denied(userId, dashboardId, "edit");
-  const owner = d.dataset.ownerId === userId;
-  const versionId = d.dataset.activeVersionId;
-  const sheets = versionId ? await activeSheets(versionId) : [];
-  const checked = checkFilterColumns(columns, sheets);
-  if (!checked.ok) return fail("INVALID", checked.message);
-  const next = owner
-    ? checked
-    : keepUnavailable(checked.columns, storedFilterColumns(d.filterColumns), sheets);
-  if (!next.ok) return fail("INVALID", next.message);
-  const r = await prisma.dashboard.updateMany({
-    where: { id: dashboardId, ...canEditWhere(userId) },
-    data: { filterColumns: next.columns as unknown as Prisma.InputJsonValue },
-  });
-  if (r.count !== 1) return denied(userId, dashboardId, "edit");
-  // Sama dengan getDashboard: non-pemilik tidak menerima nama kolom yang tidak tersedia.
-  const views = filterColumnViews(next.columns, sheets);
-  return { ok: true, data: { filterColumns: owner ? views : views.filter((f) => f.available) } };
+  if (out === "BUSY") return busy();
+  if (out === null) return denied(userId, dashboardId, "edit");
+  if (out.kind === "denied") return denied(userId, dashboardId, "edit");
+  if (out.kind === "stale") {
+    return fail(
+      "STALE",
+      "Kolom filter sudah diubah orang lain sejak halaman ini dibuka. Muat ulang halaman, lalu ulangi perubahan.",
+    );
+  }
+  if (out.kind === "invalid") return fail("INVALID", out.message);
+  return { ok: true, data: { filterColumns: out.views, hidden: out.hidden } };
 }
 
 const toView = ({ missingColumns: _, updatedAt, ...w }: StoredWidget): WidgetView => ({

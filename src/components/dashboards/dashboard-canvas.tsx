@@ -171,6 +171,8 @@ type CanvasProps = {
   savedPivots?: SavedPivotOption[];
   /** Filter dashboard (T-012): kolom filter dan kolom filter silang (server); status dari ?f=. */
   filterColumns: FilterColumnView[];
+  /** Kolom filter tersimpan yang tidak tersedia dan tidak dikirim ke non-pemilik (T-4q8n). */
+  filterColumnsHidden?: number;
   crossFilterColumns: string[];
   /** Template warna status dashboard (v1.9.0); widget tanpa template sendiri mengikuti ini. */
   colors?: DashboardColors | null;
@@ -479,7 +481,12 @@ function Canvas(props: CanvasProps) {
                       compact={!!panelItem && wide}
                       manage={
                         canEdit
-                          ? { dashboardId, columns: props.filterColumns, sources: props.sources }
+                          ? {
+                              dashboardId,
+                              columns: props.filterColumns,
+                              sources: props.sources,
+                              hidden: props.filterColumnsHidden ?? 0,
+                            }
                           : null
                       }
                       canShareViews={props.role !== "VIEWER"}

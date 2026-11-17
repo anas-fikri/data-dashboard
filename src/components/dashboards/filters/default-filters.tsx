@@ -7,6 +7,7 @@ import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import type { FilterColumnView } from "@/features/dashboards/service";
 import { api } from "../dashboard-api";
+import { knownColumns, rememberSavedColumns } from "../filter-columns-store";
 import { useDashboardFilters } from "./filter-context";
 import { isDefaultState, normName } from "./filter-model";
 
@@ -33,15 +34,31 @@ export function DefaultFilters({
     if (!manage || pending) return;
     setPending(true);
     setResult(null);
+    // Acuan = daftar terakhir yang diketahui server, termasuk simpanan Atur kolom filter yang refresh-nya
+    // belum tiba (T-4q8n #7); berbeda dari isi tersimpan → STALE.
+    const base = knownColumns(manage.dashboardId, manage.columns);
+    const clearing = state.filters.length === 0;
     const r = await api.setFilterColumns(
       manage.dashboardId,
-      manage.columns.map((c) => {
-        const f = state.filters.find((x) => normName(x.column) === normName(c.column));
+      base.map((c) => {
+        // Kolom tak tersedia (pemilik) tidak punya kontrol di bilah filter: bawaannya dipertahankan,
+        // kecuali "Hapus filter bawaan" (review T-4q8n #5).
+        const f = c.available
+          ? state.filters.find((x) => normName(x.column) === normName(c.column))
+          : clearing
+            ? undefined
+            : c.default;
         return { sheet: c.sheet, column: c.column, ...(f ? { default: f } : {}) };
       }),
+      base.map((c) => ({
+        sheet: c.sheet,
+        column: c.column,
+        ...(c.default ? { default: c.default } : {}),
+      })),
     );
     setPending(false);
     if (r.ok) {
+      rememberSavedColumns(manage.dashboardId, manage.columns, r.data.filterColumns);
       setResult({
         ok: true,
         message: state.filters.length

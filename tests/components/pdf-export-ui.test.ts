@@ -95,6 +95,17 @@ describe("pdfExportBody", () => {
     expect(pdfExportBody(D, null, null)).toEqual({ dashboardId: D, format: "pdf" });
     expect(pdfExportBody(D, { filters: [] }, url)).toEqual({ dashboardId: D, format: "pdf" });
     expect(pdfExportBody(D, null, "{rusak")).toEqual({ dashboardId: D, format: "pdf" });
+    // T-4q8n: kanvas belum menerbitkan + tanpa ?f= → filter bawaan; ?f={} (Hapus semua) tetap kosong.
+    const defaults = { filters: [{ column: "Cabang", op: "in" as const, values: ["A"] }] };
+    expect(pdfExportBody(D, null, null, "png", defaults)).toEqual({
+      dashboardId: D,
+      format: "png",
+      f: JSON.stringify(defaults),
+    });
+    expect(pdfExportBody(D, null, "{}", "pdf", defaults)).toEqual({
+      dashboardId: D,
+      format: "pdf",
+    });
   });
 });
 

@@ -130,6 +130,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.23.1] - 2026-11-17
+
+### Added
+
+- **filters:** penghitung editor ikut kolom tersembunyi, kolom tak tersedia dipertahankan, peringatan multi-sheet, bawaan basi ditandai, cadangan ekspor pakai filter bawaan (T-4q8n AC3-8) (ef394be)
+
+### Fixed
+
+- **filters:** panel kolom filter kirim expected dari daftar tampilannya (cegah lost update, review T-4q8n R2) (30117b9)
+- **filters:** perbaikan review T-4q8n (BUSY, batas body, nama tersembunyi editor, urutan STALE, hapus bawaan kolom tak tersedia, acuan simpan terakhir) (21e2b9e)
+- **filters:** simpan kolom filter tolak daftar basi (STALE) + baca-tulis satu transaksi (T-4q8n AC1-2) (8cbe086)
+
 ## [1.23.0] - 2026-11-17
 
 ### Added

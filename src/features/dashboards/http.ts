@@ -49,6 +49,7 @@ function mutation(
   label: string,
   fn: (userId: string, body: unknown) => Promise<NextResponse>,
   withBody = true,
+  bodyMax = BODY_MAX,
 ): Promise<NextResponse> {
   const cross = rejectCrossOrigin(req);
   if (cross) return Promise.resolve(cross);
@@ -66,7 +67,7 @@ function mutation(
       );
     }
     if (!withBody) return fn(userId, null);
-    const read = await readJson(req, BODY_MAX);
+    const read = await readJson(req, bodyMax);
     if ("response" in read) return read.response;
     return fn(userId, read.body);
   });
@@ -169,14 +170,26 @@ export const setColorsRoute = (req: NextRequest, dashboardId: string) =>
   });
 
 /**
- * PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik dan
+ * PATCH { filterColumns: [{ sheet, column }], expected? } — kolom filter global dashboard (T-012), pemilik dan
  * editor (T-k2ec; viewer → 403, tanpa akses → 404).
  */
 export const setFilterColumnsRoute = (req: NextRequest, dashboardId: string) =>
-  mutation(req, "simpan kolom filter gagal", async (userId, body) => {
-    const b = (body && typeof body === "object" ? body : {}) as { filterColumns?: unknown };
-    return reply(await setDashboardFilterColumns(userId, dashboardId, b.filterColumns));
-  });
+  mutation(
+    req,
+    "simpan kolom filter gagal",
+    async (userId, body) => {
+      const b = (body && typeof body === "object" ? body : {}) as {
+        filterColumns?: unknown;
+        expected?: unknown;
+      };
+      return reply(
+        await setDashboardFilterColumns(userId, dashboardId, b.filterColumns, b.expected),
+      );
+    },
+    true,
+    // Dua daftar (baru + `expected`, T-4q8n): batas = dua kali batas satu daftar sebelumnya.
+    2 * BODY_MAX,
+  );
 
 /*
  * Tampilan tersimpan (T-tf88): GET daftar (pribadi + bersama), POST { name, state, shared? }, PATCH
