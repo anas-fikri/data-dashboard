@@ -7,7 +7,7 @@ tags:
   - security
   - ui
 created: "2026-10-22T10:45:53Z"
-updated: "2026-11-17T10:49:58Z"
+updated: "2026-11-17T10:56:31Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -23,6 +23,10 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-17T10:49:58Z"
       findings: 2
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-11-17T10:56:30Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
@@ -59,19 +63,19 @@ Lanjutan review T-k2ec (temuan non-blokir). Simpan kolom filter memakai revisi/l
 ## Acceptance criteria
 - [x] Simpan kolom filter dari daftar basi → CONFLICT/STALE dengan pesan muat ulang, bukan menimpa diam-diam (review T-k2ec #1)
 - [x] Baca kolom tersimpan + tulis dalam satu transaksi lockDashboard (review T-k2ec #2)
-- [ ] Penghitung/batas penuh editor menghitung kolom tersembunyi yang dipertahankan (review T-k2ec #3)
-- [ ] Pemilik bisa menambah kolom walau ada kolom tersimpan tidak tersedia yang tidak diubah (review T-k2ec #4)
-- [ ] Editor diberi tahu bila kolom filter yang ditambahkan menyaring lebih dari satu sheet (review T-k2ec #6)
-- [ ] Pemilik bisa menyimpan filter bawaan walau ada kolom filter tidak tersedia (review T-vb7q #2)
-- [ ] Cadangan PDF saat status filter belum diterbitkan memakai filter bawaan (review T-vb7q #3)
-- [ ] Bawaan basi (tipe kolom diubah) ditandai di pengaturan sebelum terhapus saat simpan berikutnya (review T-vb7q pass 2 #1)
+- [x] Penghitung/batas penuh editor menghitung kolom tersembunyi yang dipertahankan (review T-k2ec #3)
+- [x] Pemilik bisa menambah kolom walau ada kolom tersimpan tidak tersedia yang tidak diubah (review T-k2ec #4)
+- [x] Editor diberi tahu bila kolom filter yang ditambahkan menyaring lebih dari satu sheet (review T-k2ec #6)
+- [x] Pemilik bisa menyimpan filter bawaan walau ada kolom filter tidak tersedia (review T-vb7q #2)
+- [x] Cadangan PDF saat status filter belum diterbitkan memakai filter bawaan (review T-vb7q #3)
+- [x] Bawaan basi (tipe kolom diubah) ditandai di pengaturan sebelum terhapus saat simpan berikutnya (review T-vb7q pass 2 #1)
 
 ## Risk
 Impact: simpan kolom filter (pemilik/editor) dan filter bawaan; cadangan filter ekspor PDF/PNG/HTML. Tanpa migrasi. Security (STRIDE): Tampering — simpan basi ditolak STALE (tanpa lost update); akses dibaca setelah kunci dashboard (tanpa TOCTOU); editor tetap tidak menerima nama kolom tak tersedia (hanya jumlahnya). Rollback: image sebelumnya; klien lama tanpa `expected` tetap diterima (tanpa cek basi). Validation: uji unit filter-columns/pdf-export-ui/multisheet, e2e sharing + filters + exports.
 
 ## Notes
-
 - 2026-11-17T09:23:29Z AC1/AC2: expected + transaksi lockDashboard; unit + e2e sharing/filters lulus.
+- 2026-11-17T10:56:31Z Review 3 putaran (7 Low → diperbaiki; R2 1 Medium lost update → diperbaiki, 1 Low → T-v42a; R3 0). Unit 1117 + e2e sharing/filters 49 lulus.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
