@@ -92,15 +92,15 @@ export function FilterColumnsSettings({
     setList(next);
     setPending(true);
     setResult(null);
-    const r = await api.setFilterColumns(
-      dashboardId,
-      // Bawaan (T-vb7q) ikut agar tambah/hapus kolom lain tidak menghapusnya.
-      next.map((c) => ({
+    const plain = (cs: FilterColumnView[]) =>
+      cs.map((c) => ({
         sheet: c.sheet,
         column: c.column,
         ...(c.default ? { default: c.default } : {}),
-      })),
-    );
+      }));
+    // Bawaan (T-vb7q) ikut agar tambah/hapus kolom lain tidak menghapusnya; `before` = daftar yang dilihat
+    // (T-4q8n): sudah diubah orang lain → STALE, bukan menimpa diam-diam.
+    const r = await api.setFilterColumns(dashboardId, plain(next), plain(before));
     setPending(false);
     if (r.ok) {
       setList(r.data.filterColumns);

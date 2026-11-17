@@ -934,34 +934,70 @@ export async function filterOverlapFor(dashboardId: string): Promise<string[]> {
  * viewer → FORBIDDEN): ≤ 8, unik, setiap kolom ada dan tampil di versi data aktif. Hasil: tampilan kolom
  * filter yang baru.
  */
+/** Bentuk pembanding daftar kolom filter: kunci + bawaan, urut sesuai daftar (T-4q8n). */
+function filterColumnsSignature(views: FilterColumnView[]): string {
+  return JSON.stringify(views.map((v) => [v.key, v.default ?? null]));
+}
+
 export async function setDashboardFilterColumns(
   userId: string,
   dashboardId: unknown,
   columns: unknown,
+  /**
+   * Daftar kolom filter yang dilihat klien saat mulai mengubah (T-4q8n). Ada dan berbeda dari isi tersimpan
+   * (tampilan per peran) → STALE: tab basi tidak menimpa perubahan orang lain. Tidak ada = klien lama.
+   */
+  expected?: unknown,
 ): Promise<DashboardResult<{ filterColumns: FilterColumnView[] }>> {
   if (!isIdShape(dashboardId)) return notFound();
-  const d = await prisma.dashboard.findFirst({
-    where: { id: dashboardId, ...canEditWhere(userId) },
-    select: { filterColumns: true, dataset: { select: { ownerId: true, activeVersionId: true } } },
+  // Baca isi tersimpan + tulis dalam satu transaksi di bawah kunci dashboard (review T-k2ec #2): dua simpan
+  // bersamaan tidak saling menimpa kolom tersembunyi, dan akses dibaca setelah kunci.
+  const out = await prisma.$transaction(async (tx) => {
+    await lockDashboard(tx, dashboardId);
+    const d = await tx.dashboard.findFirst({
+      where: { id: dashboardId, ...canEditWhere(userId) },
+      select: {
+        filterColumns: true,
+        dataset: { select: { ownerId: true, activeVersionId: true } },
+      },
+    });
+    if (!d) return { kind: "denied" as const };
+    const owner = d.dataset.ownerId === userId;
+    const versionId = d.dataset.activeVersionId;
+    const sheets = versionId ? await activeSheets(versionId) : [];
+    const checked = checkFilterColumns(columns, sheets);
+    if (!checked.ok) return { kind: "invalid" as const, message: checked.message };
+    const viewOf = (stored: FilterColumn[]) => {
+      const views = filterColumnViews(stored, sheets);
+      // Sama dengan getDashboard: non-pemilik tidak menerima nama kolom yang tidak tersedia.
+      return owner ? views : views.filter((f) => f.available);
+    };
+    const stored = storedFilterColumns(d.filterColumns);
+    if (
+      expected !== undefined &&
+      filterColumnsSignature(viewOf(storedFilterColumns(expected))) !==
+        filterColumnsSignature(viewOf(stored))
+    ) {
+      return { kind: "stale" as const };
+    }
+    const next = owner ? checked : keepUnavailable(checked.columns, stored, sheets);
+    if (!next.ok) return { kind: "invalid" as const, message: next.message };
+    const r = await tx.dashboard.updateMany({
+      where: { id: dashboardId, ...canEditWhere(userId) },
+      data: { filterColumns: next.columns as unknown as Prisma.InputJsonValue },
+    });
+    if (r.count !== 1) return { kind: "denied" as const };
+    return { kind: "ok" as const, views: viewOf(next.columns) };
   });
-  if (!d) return denied(userId, dashboardId, "edit");
-  const owner = d.dataset.ownerId === userId;
-  const versionId = d.dataset.activeVersionId;
-  const sheets = versionId ? await activeSheets(versionId) : [];
-  const checked = checkFilterColumns(columns, sheets);
-  if (!checked.ok) return fail("INVALID", checked.message);
-  const next = owner
-    ? checked
-    : keepUnavailable(checked.columns, storedFilterColumns(d.filterColumns), sheets);
-  if (!next.ok) return fail("INVALID", next.message);
-  const r = await prisma.dashboard.updateMany({
-    where: { id: dashboardId, ...canEditWhere(userId) },
-    data: { filterColumns: next.columns as unknown as Prisma.InputJsonValue },
-  });
-  if (r.count !== 1) return denied(userId, dashboardId, "edit");
-  // Sama dengan getDashboard: non-pemilik tidak menerima nama kolom yang tidak tersedia.
-  const views = filterColumnViews(next.columns, sheets);
-  return { ok: true, data: { filterColumns: owner ? views : views.filter((f) => f.available) } };
+  if (out.kind === "denied") return denied(userId, dashboardId, "edit");
+  if (out.kind === "stale") {
+    return fail(
+      "STALE",
+      "Kolom filter sudah diubah orang lain sejak halaman ini dibuka. Muat ulang halaman, lalu ulangi perubahan.",
+    );
+  }
+  if (out.kind === "invalid") return fail("INVALID", out.message);
+  return { ok: true, data: { filterColumns: out.views } };
 }
 
 const toView = ({ missingColumns: _, updatedAt, ...w }: StoredWidget): WidgetView => ({

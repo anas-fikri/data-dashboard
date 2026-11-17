@@ -39,6 +39,12 @@ export function DefaultFilters({
         const f = state.filters.find((x) => normName(x.column) === normName(c.column));
         return { sheet: c.sheet, column: c.column, ...(f ? { default: f } : {}) };
       }),
+      // Daftar yang dilihat (T-4q8n): sudah diubah orang lain → STALE.
+      manage.columns.map((c) => ({
+        sheet: c.sheet,
+        column: c.column,
+        ...(c.default ? { default: c.default } : {}),
+      })),
     );
     setPending(false);
     if (r.ok) {

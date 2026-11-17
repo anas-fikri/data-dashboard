@@ -82,9 +82,12 @@ export const api = {
   setFilterColumns: (
     id: string,
     filterColumns: { sheet: string; column: string; default?: DashFilter }[],
+    /** Daftar yang dilihat saat mulai mengubah (T-4q8n): berbeda dari isi tersimpan → STALE. */
+    expected?: { sheet: string; column: string; default?: DashFilter }[],
   ) =>
     call<{ filterColumns: FilterColumnView[] }>(`${base(id)}/filter-columns`, "PATCH", {
       filterColumns,
+      ...(expected ? { expected } : {}),
     }),
   /** `savedPivotId` (T-074): ikat ke pivot tersimpan — `spec` = tampilan saja. */
   configureWidget: (

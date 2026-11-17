@@ -169,13 +169,16 @@ export const setColorsRoute = (req: NextRequest, dashboardId: string) =>
   });
 
 /**
- * PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik dan
+ * PATCH { filterColumns: [{ sheet, column }], expected? } — kolom filter global dashboard (T-012), pemilik dan
  * editor (T-k2ec; viewer → 403, tanpa akses → 404).
  */
 export const setFilterColumnsRoute = (req: NextRequest, dashboardId: string) =>
   mutation(req, "simpan kolom filter gagal", async (userId, body) => {
-    const b = (body && typeof body === "object" ? body : {}) as { filterColumns?: unknown };
-    return reply(await setDashboardFilterColumns(userId, dashboardId, b.filterColumns));
+    const b = (body && typeof body === "object" ? body : {}) as {
+      filterColumns?: unknown;
+      expected?: unknown;
+    };
+    return reply(await setDashboardFilterColumns(userId, dashboardId, b.filterColumns, b.expected));
   });
 
 /*

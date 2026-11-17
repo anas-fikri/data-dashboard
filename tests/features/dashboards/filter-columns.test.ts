@@ -14,9 +14,15 @@ import {
  * T-012: kolom filter dashboard — validasi pengaturan pemilik (≤ 8, unik, ada dan tampil di versi
  * aktif), tampilan terhadap versi aktif, dan kolom cross-filter dari widget grafik. Prisma palsu.
  */
-const prisma = {
+const prisma: Record<string, unknown> & {
+  dashboard: { findFirst: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
+  sheet: { findMany: ReturnType<typeof vi.fn>; groupBy: ReturnType<typeof vi.fn> };
+} = {
   dashboard: { findFirst: vi.fn(), updateMany: vi.fn() },
   sheet: { findMany: vi.fn(), groupBy: vi.fn() },
+  // Transaksi T-4q8n: kunci dashboard lalu baca-tulis di tx (= prisma palsu yang sama).
+  $executeRaw: vi.fn(async () => 1),
+  $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
 };
 vi.mock("@/lib/db", () => ({ prisma }));
 
@@ -57,6 +63,38 @@ const owned = () =>
 beforeEach(() => vi.clearAllMocks());
 
 describe("setDashboardFilterColumns", () => {
+  it("T-4q8n: daftar yang dilihat (expected) sudah basi → STALE tanpa menulis; sama → tersimpan", async () => {
+    const stored = [{ sheet: "Penjualan", column: "Cabang" }];
+    const withStored = () =>
+      prisma.dashboard.findFirst.mockResolvedValueOnce({
+        filterColumns: stored,
+        dataset: { ownerId: OWNER, activeVersionId: VER },
+      });
+    withStored();
+    prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
+    const stale = await svc.setDashboardFilterColumns(
+      OWNER,
+      DB,
+      [{ sheet: "Target", column: "Wilayah" }],
+      [], // tab basi: dibuka sebelum kolom Cabang ditambahkan orang lain
+    );
+    expect(stale).toMatchObject({ ok: false, code: "STALE" });
+    expect(prisma.dashboard.updateMany).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).toHaveBeenCalled(); // kunci dashboard sebelum membaca
+
+    withStored();
+    prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
+    prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
+    const fresh = await svc.setDashboardFilterColumns(
+      OWNER,
+      DB,
+      [...stored, { sheet: "Target", column: "Wilayah" }],
+      [{ sheet: " penjualan", column: "CABANG" }], // ejaan berbeda, kunci sama
+    );
+    expect(fresh.ok).toBe(true);
+    expect(prisma.dashboard.updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it("disimpan dengan nama terkini dari skema; hasil = tampilan kolom filter", async () => {
     owned();
     prisma.sheet.findMany.mockResolvedValueOnce(SHEETS);
