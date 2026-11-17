@@ -1,17 +1,33 @@
 ---
 id: T-d1ns
 title: 'Judul otomatis: tangani gagal ganti judul dan widget lama tanpa judul'
-status: in_review
-profile: standard
+status: done
+profile: strict
 tags:
   - ui
 created: "2026-10-22T04:29:18Z"
-updated: "2026-11-17T14:36:45Z"
+updated: "2026-11-17T14:44:12Z"
+closed: "2026-11-17T14:44:12Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 9117b9deede9e645e46e8e75c07f05b0e5146f3f
+paths:
+  - docs/runbook-deploy.md
+  - src/components/dashboards/auto-title.ts
+  - src/components/dashboards/filters/filter-context.tsx
+  - src/components/dashboards/use-dashboard-editor.ts
+  - src/components/dashboards/widget-card.tsx
+  - src/components/dashboards/widget-panel.tsx
+  - src/components/metrics/server-card.tsx
+  - src/components/shell/app-shell.tsx
+  - src/features/dashboards/filter-columns.ts
+  - src/features/dashboards/service.ts
+  - src/features/exports/pdf-filter.ts
+  - src/features/exports/render-session.ts
+  - tests/e2e/presence.spec.ts
+  - tests/features/dashboards/filter-columns.test.ts
 review:
   passes:
     - "n": 1
@@ -30,21 +46,21 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 201198
+    duration_ms: 204872
     summary: |-
       …vice":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1794925945821,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
-      {"level":40,"time":1794925948783,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
-      {"level":40,"time":1794925948786,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
-      {"level":40,"time":1794925948789,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794926397502,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794926397506,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794926397509,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794926398467,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
 
        Test Files  259 passed | 1 skipped (260)
             Tests  3430 passed | 10 skipped (3440)
-         Start at  14:30:22
-         Duration  136.21s (tests 81%, import 16%, transform 3%)
+         Start at  14:37:50
+         Duration  138.94s (tests 81%, import 16%, transform 3%)
 
-          Isolate  260 workers spawned · ~105ms startup each (spawn + environment, per file)
-                   at least ~8.96s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  260 workers spawned · ~107ms startup each (spawn + environment, per file)
+                   at least ~9.19s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.24.0 audit
@@ -52,10 +68,421 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-11-17T14:32:39Z"
+    at: "2026-11-17T14:40:10Z"
     tree: 93bd308a34f9128a2f76e39ebd4cb12e6197d21a8aa6466d7655b5aef29f1d25
+  commits:
+    - 000f2ab
+    - 0141cc8
+    - 022c31b
+    - 02321b3
+    - 027d640
+    - "0305653"
+    - "0380793"
+    - 06f26ff
+    - 07c429f
+    - 083808b
+    - 09e9b98
+    - 0b900f3
+    - 0c43f39
+    - 0cd20d0
+    - 0de3280
+    - 0e6065c
+    - 0f0bc44
+    - 0f5241b
+    - 0f62982
+    - 0fca086
+    - 10be0fe
+    - 1113f25
+    - 1146ff1
+    - 115d670
+    - 117aed1
+    - 12c9032
+    - 139ea63
+    - 13d2307
+    - 14edcb2
+    - 170b893
+    - 1777cf3
+    - 1782e3e
+    - 17deb57
+    - 18843ed
+    - 1892c10
+    - 18ad0a8
+    - 19af165
+    - 19b430b
+    - 1a1a432
+    - 1b4b6f3
+    - 1c79106
+    - 1d723f8
+    - 1dc1a3a
+    - 1f127d7
+    - 1f34fb1
+    - 1fa2a2b
+    - 1faf55a
+    - 202826f
+    - 21e2b9e
+    - 226f64b
+    - 238a69d
+    - 23f1d09
+    - "2472318"
+    - 24e0d05
+    - 25abf41
+    - 25febea
+    - 26454a6
+    - "2762863"
+    - 280999b
+    - 28a8b1a
+    - 2a3404c
+    - 2a4785d
+    - 2b1c079
+    - 2b33214
+    - 2b8d5ed
+    - 2c75eb4
+    - 2dc0d7f
+    - 2dfe3e2
+    - 2eb204f
+    - 2f5faf1
+    - 2ffcafe
+    - 30117b9
+    - 30e4fd7
+    - 3171ffa
+    - 320d807
+    - 32e2388
+    - 33058d5
+    - 343ac0c
+    - "3455182"
+    - 347467d
+    - 353960b
+    - 355944b
+    - 35c6781
+    - 36c9f18
+    - 397b666
+    - 39adbb7
+    - 39f6a65
+    - 3b06bc5
+    - 3b2fd96
+    - 3b545e0
+    - 3b6ad9e
+    - 3b83c4e
+    - 3ba900a
+    - 3d6b854
+    - 3db23b5
+    - 3ff373d
+    - 4084a12
+    - 40a9727
+    - 419c00f
+    - 41ef202
+    - 428de0e
+    - 4299c61
+    - "4300729"
+    - "4311e88"
+    - 434c0b7
+    - "4417829"
+    - 441a240
+    - "4476096"
+    - 45146c1
+    - 4530e0b
+    - 472cdb7
+    - 480fe60
+    - "4850467"
+    - 491b443
+    - 49c37c9
+    - 4a2e710
+    - 4a32c9e
+    - 4a9c1bc
+    - 4af631d
+    - 4e6347e
+    - 4fa9ec8
+    - 4fbb304
+    - 4fcedbe
+    - 5133eac
+    - 515f654
+    - 51f63b2
+    - 51fa41a
+    - 52d859a
+    - 53b72de
+    - 5448b90
+    - 562459f
+    - 56ac448
+    - 57dda72
+    - 5815e7e
+    - 589ab6c
+    - 58fd0d2
+    - 5931b03
+    - 5a11c1b
+    - 5a2674d
+    - 5b25e15
+    - 5d23aff
+    - 5d77b85
+    - 6237d6d
+    - 625cf78
+    - 632f35b
+    - 63a7f03
+    - 648ad69
+    - 64c3c85
+    - "6574710"
+    - 669a30f
+    - 681c251
+    - 683ea1f
+    - 68fde9f
+    - 696c370
+    - "6981253"
+    - 698c88f
+    - 6a5906f
+    - 6a6a591
+    - 6a79470
+    - 6aca388
+    - 6af2ee7
+    - 6afdb4b
+    - 6b5c285
+    - 6ba502f
+    - 6c4bc8b
+    - 6c7c4f8
+    - 6ccdd65
+    - 6da3590
+    - 6e84221
+    - 7012c26
+    - 704c837
+    - 711beaf
+    - 7248a58
+    - "7266741"
+    - 7288cca
+    - "7336191"
+    - 741a155
+    - 7521e9d
+    - 7552f30
+    - "76492e3"
+    - 76c1d1c
+    - 77a5cd1
+    - 77d1cfb
+    - 77df3bc
+    - 7809c7d
+    - 79246cf
+    - "79e0222"
+    - 7d1d4e0
+    - 7d52d9a
+    - 7dc7885
+    - 7ddd569
+    - 7deab10
+    - 7e67256
+    - 7e996ac
+    - 803bb7b
+    - "8049e15"
+    - 80cc079
+    - 8124f7c
+    - 82cff9b
+    - 8325cf5
+    - 83c6e64
+    - 84ba18e
+    - 850026f
+    - 85626d5
+    - 856bae9
+    - 86636d7
+    - 8741bf3
+    - 87a6961
+    - 88ad754
+    - 8b0a10f
+    - 8b7909f
+    - 8c0eaa9
+    - 8c7f091
+    - 8cbe086
+    - 8ce4cc3
+    - 8d5bf1d
+    - 8dc3860
+    - 8e808c9
+    - "9062618"
+    - 9094f41
+    - 9117b9d
+    - 914b030
+    - 925c090
+    - 92ee216
+    - "9416e47"
+    - 944d177
+    - 95344b2
+    - 957a6dd
+    - 95a30ac
+    - 95b7bc9
+    - 95f55db
+    - 95f7b45
+    - 96102f2
+    - 973629c
+    - 973f5ad
+    - "9803850"
+    - "9980959"
+    - 99eea5c
+    - 9ab9fd1
+    - 9b62f18
+    - 9b88ac2
+    - 9ba7b00
+    - 9c9b2f2
+    - 9ca8a2a
+    - 9cfda54
+    - 9e468f4
+    - 9ebacef
+    - 9ee22e2
+    - 9ef1150
+    - a03f3f1
+    - a04e7fb
+    - a079f81
+    - a085d62
+    - a12fcfb
+    - a1818c4
+    - a18c5e1
+    - a19d688
+    - a2d6c0a
+    - a489cb3
+    - a544a24
+    - a5b5bfa
+    - a6b1061
+    - a70a59a
+    - a725c7b
+    - a74bd58
+    - a77fe1b
+    - aa93391
+    - ace71fc
+    - ad5caec
+    - aec3bbe
+    - aff74e4
+    - b1036b4
+    - b1e545a
+    - b285387
+    - b37b39c
+    - b421bcc
+    - b43e7d6
+    - b4d9cbb
+    - b714998
+    - b75d6d8
+    - b7ddea3
+    - b7efc59
+    - b81d108
+    - b8217ca
+    - b83360b
+    - b980c2c
+    - b983cc0
+    - ba29099
+    - ba74587
+    - bae5de1
+    - bd83a2d
+    - be7c569
+    - bea7eec
+    - bf7ef78
+    - bf81be6
+    - c09567f
+    - c0fdc24
+    - c290537
+    - c2d9cee
+    - c303ec2
+    - c3eb267
+    - c4eab09
+    - c4f995f
+    - c54305e
+    - c54344a
+    - c55aa75
+    - c5f372b
+    - c70623a
+    - c7ca1a6
+    - c917a8e
+    - c9d3a79
+    - ca19b21
+    - cad7698
+    - cb1f89f
+    - cb2bb63
+    - cb50be9
+    - cc560e5
+    - cc9ca98
+    - ccd8e58
+    - cd206e3
+    - cdc3e64
+    - cf10253
+    - cf9ced4
+    - d0d1fdf
+    - d271413
+    - d3794b5
+    - d44e938
+    - d458bb6
+    - d56a607
+    - d5afd43
+    - d5d36a3
+    - d614a7b
+    - d6d31c9
+    - d7bc81b
+    - d7d32e5
+    - d97c497
+    - da9dbbf
+    - db12a13
+    - dbd8335
+    - dce1add
+    - dcf39e5
+    - dd070f5
+    - dd124a1
+    - dd94740
+    - ddfd307
+    - de9b9f2
+    - def261a
+    - df88720
+    - e01b3d1
+    - e099ea2
+    - e09fb33
+    - e1414ab
+    - e1a05ba
+    - e2c8065
+    - e3951a1
+    - e4b98f0
+    - e4e117a
+    - e6020f2
+    - e675445
+    - e6e94a4
+    - e7488c7
+    - e785231
+    - e78906d
+    - e82f68a
+    - e85dcdd
+    - e9978ed
+    - ea05d98
+    - ea61a3f
+    - eaa3c13
+    - eae474e
+    - eb11b82
+    - ee21607
+    - ee92331
+    - ef3422a
+    - ef394be
+    - ef427f1
+    - ef7600f
+    - eff56c2
+    - f09d71f
+    - f18da97
+    - f1d0196
+    - f21a6ec
+    - f256b4d
+    - f274c1e
+    - f2f6133
+    - f327efe
+    - f37ba46
+    - f3beaef
+    - f4b549f
+    - f5246f0
+    - f56c021
+    - f5805f9
+    - f6049ca
+    - f68d56b
+    - f750d27
+    - f7cf853
+    - f8d9189
+    - f9659c2
+    - f992638
+    - f994079
+    - fbe9431
+    - fd03bed
+    - fd268b0
+    - fd66af5
+    - fe9e9a2
+    - ff2deb1
+    - ffc9089
+  acceptance:
+    total: 3
+    done: 3
   audit:
-    at: "2026-11-17T14:32:40Z"
+    at: "2026-11-17T14:40:11Z"
     passed: true
     tree: 93bd308a34f9128a2f76e39ebd4cb12e6197d21a8aa6466d7655b5aef29f1d25
     results:
@@ -65,7 +492,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
-          End status: 562 dirs visited, 6675 inodes visited, 1 Extract calls, 110.024651ms elapsed, 110.024883ms wall time
+          End status: 562 dirs visited, 6683 inodes visited, 1 Extract calls, 182.055769ms elapsed, 182.056102ms wall time
           Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
           No issues found
       - name: npm audit (prod high, dev critical)
@@ -109,3 +536,12 @@ Impact: kecil, UI/pesan. Security (STRIDE): lihat checklist. Rollback: image seb
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tanpa file
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — API rename yang ada (versi widget dicek, STALE)
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: konfigurasi tidak berubah
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-11-17T14:40:10Z (204872 ms)
+- Acceptance criteria: 3/3 satisfied
+- Commits: 000f2ab, 0141cc8, 022c31b, 02321b3, 027d640, 0305653, 0380793, 06f26ff, 07c429f, 083808b, 09e9b98, 0b900f3, 0c43f39, 0cd20d0, 0de3280, 0e6065c, 0f0bc44, 0f5241b, 0f62982, 0fca086, 10be0fe, 1113f25, 1146ff1, 115d670, 117aed1, 12c9032, 139ea63, 13d2307, 14edcb2, 170b893, 1777cf3, 1782e3e, 17deb57, 18843ed, 1892c10, 18ad0a8, 19af165, 19b430b, 1a1a432, 1b4b6f3, 1c79106, 1d723f8, 1dc1a3a, 1f127d7, 1f34fb1, 1fa2a2b, 1faf55a, 202826f, 21e2b9e, 226f64b, 238a69d, 23f1d09, 2472318, 24e0d05, 25abf41, 25febea, 26454a6, 2762863, 280999b, 28a8b1a, 2a3404c, 2a4785d, 2b1c079, 2b33214, 2b8d5ed, 2c75eb4, 2dc0d7f, 2dfe3e2, 2eb204f, 2f5faf1, 2ffcafe, 30117b9, 30e4fd7, 3171ffa, 320d807, 32e2388, 33058d5, 343ac0c, 3455182, 347467d, 353960b, 355944b, 35c6781, 36c9f18, 397b666, 39adbb7, 39f6a65, 3b06bc5, 3b2fd96, 3b545e0, 3b6ad9e, 3b83c4e, 3ba900a, 3d6b854, 3db23b5, 3ff373d, 4084a12, 40a9727, 419c00f, 41ef202, 428de0e, 4299c61, 4300729, 4311e88, 434c0b7, 4417829, 441a240, 4476096, 45146c1, 4530e0b, 472cdb7, 480fe60, 4850467, 491b443, 49c37c9, 4a2e710, 4a32c9e, 4a9c1bc, 4af631d, 4e6347e, 4fa9ec8, 4fbb304, 4fcedbe, 5133eac, 515f654, 51f63b2, 51fa41a, 52d859a, 53b72de, 5448b90, 562459f, 56ac448, 57dda72, 5815e7e, 589ab6c, 58fd0d2, 5931b03, 5a11c1b, 5a2674d, 5b25e15, 5d23aff, 5d77b85, 6237d6d, 625cf78, 632f35b, 63a7f03, 648ad69, 64c3c85, 6574710, 669a30f, 681c251, 683ea1f, 68fde9f, 696c370, 6981253, 698c88f, 6a5906f, 6a6a591, 6a79470, 6aca388, 6af2ee7, 6afdb4b, 6b5c285, 6ba502f, 6c4bc8b, 6c7c4f8, 6ccdd65, 6da3590, 6e84221, 7012c26, 704c837, 711beaf, 7248a58, 7266741, 7288cca, 7336191, 741a155, 7521e9d, 7552f30, 76492e3, 76c1d1c, 77a5cd1, 77d1cfb, 77df3bc, 7809c7d, 79246cf, 79e0222, 7d1d4e0, 7d52d9a, 7dc7885, 7ddd569, 7deab10, 7e67256, 7e996ac, 803bb7b, 8049e15, 80cc079, 8124f7c, 82cff9b, 8325cf5, 83c6e64, 84ba18e, 850026f, 85626d5, 856bae9, 86636d7, 8741bf3, 87a6961, 88ad754, 8b0a10f, 8b7909f, 8c0eaa9, 8c7f091, 8cbe086, 8ce4cc3, 8d5bf1d, 8dc3860, 8e808c9, 9062618, 9094f41, 9117b9d, 914b030, 925c090, 92ee216, 9416e47, 944d177, 95344b2, 957a6dd, 95a30ac, 95b7bc9, 95f55db, 95f7b45, 96102f2, 973629c, 973f5ad, 9803850, 9980959, 99eea5c, 9ab9fd1, 9b62f18, 9b88ac2, 9ba7b00, 9c9b2f2, 9ca8a2a, 9cfda54, 9e468f4, 9ebacef, 9ee22e2, 9ef1150, a03f3f1, a04e7fb, a079f81, a085d62, a12fcfb, a1818c4, a18c5e1, a19d688, a2d6c0a, a489cb3, a544a24, a5b5bfa, a6b1061, a70a59a, a725c7b, a74bd58, a77fe1b, aa93391, ace71fc, ad5caec, aec3bbe, aff74e4, b1036b4, b1e545a, b285387, b37b39c, b421bcc, b43e7d6, b4d9cbb, b714998, b75d6d8, b7ddea3, b7efc59, b81d108, b8217ca, b83360b, b980c2c, b983cc0, ba29099, ba74587, bae5de1, bd83a2d, be7c569, bea7eec, bf7ef78, bf81be6, c09567f, c0fdc24, c290537, c2d9cee, c303ec2, c3eb267, c4eab09, c4f995f, c54305e, c54344a, c55aa75, c5f372b, c70623a, c7ca1a6, c917a8e, c9d3a79, ca19b21, cad7698, cb1f89f, cb2bb63, cb50be9, cc560e5, cc9ca98, ccd8e58, cd206e3, cdc3e64, cf10253, cf9ced4, d0d1fdf, d271413, d3794b5, d44e938, d458bb6, d56a607, d5afd43, d5d36a3, d614a7b, d6d31c9, d7bc81b, d7d32e5, d97c497, da9dbbf, db12a13, dbd8335, dce1add, dcf39e5, dd070f5, dd124a1, dd94740, ddfd307, de9b9f2, def261a, df88720, e01b3d1, e099ea2, e09fb33, e1414ab, e1a05ba, e2c8065, e3951a1, e4b98f0, e4e117a, e6020f2, e675445, e6e94a4, e7488c7, e785231, e78906d, e82f68a, e85dcdd, e9978ed, ea05d98, ea61a3f, eaa3c13, eae474e, eb11b82, ee21607, ee92331, ef3422a, ef394be, ef427f1, ef7600f, eff56c2, f09d71f, f18da97, f1d0196, f21a6ec, f256b4d, f274c1e, f2f6133, f327efe, f37ba46, f3beaef, f4b549f, f5246f0, f56c021, f5805f9, f6049ca, f68d56b, f750d27, f7cf853, f8d9189, f9659c2, f992638, f994079, fbe9431, fd03bed, fd268b0, fd66af5, fe9e9a2, ff2deb1, ffc9089
+- Review pass 1 by claude-reviewer-subagent: 4 findings
+- Review pass 2 by claude-reviewer-subagent: 1 findings
+- Review pass 3 by claude-reviewer-subagent: 0 findings
