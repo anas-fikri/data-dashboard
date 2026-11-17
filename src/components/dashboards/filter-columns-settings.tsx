@@ -38,7 +38,8 @@ export function focusIfTargeted(el: HTMLElement | null, hash: string): boolean {
  * saat terpasang — Next hanya menggulir ke hash, fokus tetap di tombol pemicu di atas halaman (2.4.3).
  * `embedded` (T-k2ec): versi di bilah filter mode edit untuk pemilik dan editor — tanpa jangkar
  * #kolom-filter (hanya kartu pengaturan pemilik yang menjadi tujuan tautan). Daftar mengikuti props
- * baru setelah refresh server, jadi simpanan di satu tempat tidak membuat tempat lain basi.
+ * baru setelah refresh server. Simpanan di tempat lain yang refresh-nya belum tiba membuat simpanan di
+ * sini ditolak STALE (muat ulang), tidak pernah menimpa (T-4q8n).
  */
 export function FilterColumnsSettings({
   dashboardId,
@@ -111,8 +112,7 @@ export function FilterColumnsSettings({
         column: c.column,
         ...(c.default ? { default: c.default } : {}),
       }));
-    // Bawaan (T-vb7q) ikut agar tambah/hapus kolom lain tidak menghapusnya; `before` = daftar yang dilihat
-    // (T-4q8n): sudah diubah orang lain → STALE, bukan menimpa diam-diam.
+    // Bawaan (T-vb7q) ikut agar tambah/hapus kolom lain tidak menghapusnya.
     // `expected` = daftar yang ditampilkan panel ini (`before`), sama dengan dasar `next`: perubahan orang
     // lain — atau simpanan bawaan dari bilah filter yang refresh-nya belum tiba — memberi STALE, tidak
     // pernah ditimpa (review T-4q8n R2). Jawaban dicatat agar "Jadikan filter aktif sebagai bawaan"
