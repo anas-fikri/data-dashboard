@@ -80,7 +80,7 @@ describe("cleanPath", () => {
 });
 
 describe("touchPresence / readOnline", () => {
-  it("online = aktif dalam 5 menit; terbaru dulu; data > 24 jam terbuang; kunci ber-TTL", async () => {
+  it("online = aktif dalam 5 menit; terbaru dulu; data > umur retensi terbuang; kunci ber-TTL", async () => {
     const { r, z, ttl } = fakeRedis();
     const now = 10 * RETENTION_MS;
     await touchPresence(r, "lama", "/", now - RETENTION_MS - 1);
@@ -99,7 +99,7 @@ describe("touchPresence / readOnline", () => {
 });
 
 describe("retensi saat membaca (review T-h807 #1)", () => {
-  it("anggota > 24 jam dibuang juga saat daftar dibaca, walau ada heartbeat lain sesudahnya", async () => {
+  it("anggota > umur retensi (12 jam) dibuang juga saat daftar dibaca, walau ada heartbeat lain sesudahnya", async () => {
     const { r, z } = fakeRedis();
     const t0 = 10 * RETENTION_MS;
     await touchPresence(r, "jumat", "/", t0);

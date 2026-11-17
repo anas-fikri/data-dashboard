@@ -60,7 +60,7 @@ export interface PresenceEntry {
 
 /**
  * User yang aktif dalam jendela online, terbaru dulu. Anggota yang lebih tua dari RETENTION_MS juga dibuang
- * di sini (bukan hanya saat ada heartbeat), sehingga tidak ada catatan yang bertahan lebih dari ±24 jam
+ * di sini (bukan hanya saat ada heartbeat), sehingga catatan tidak bertahan lebih dari RETENTION_MS
  * selama admin masih melihat daftar (review T-h807 #1). `paths: false` = tanpa membaca halaman (hitungan).
  */
 export async function readOnline(
