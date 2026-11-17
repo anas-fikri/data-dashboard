@@ -147,8 +147,8 @@ test.describe("pembanding KPI + klik-tembus (v1.15.0)", () => {
     await expect(cmp).toContainText(/▲ \+32,3\s?%/);
     await expect(cmp).toContainText("vs Mar 2026 (93)");
     await expect(cmp).toHaveAttribute("data-direction", "up");
-    // Tanpa penilaian: netral.
-    await expect(cmp.locator("[data-status]")).toHaveCount(0);
+    // Tanpa penilaian sendiri: ikut bawaan dashboard "makin tinggi makin baik" (T-se9h).
+    await expect(cmp.locator("[data-status=good]")).toBeVisible();
 
     await pick(owner, panel, "Penilaian warna", "Makin tinggi makin baik (mis. tepat waktu)");
     await saved(panel);

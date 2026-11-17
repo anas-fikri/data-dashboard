@@ -8,10 +8,10 @@ import { DashboardColorsContext } from "@/components/widgets/dashboard-colors";
 import { PALETTE_LABEL } from "@/features/widgets/status-color";
 import {
   PALETTES,
-  statusColorsOf,
+  explicitStatusColorsOf,
   type DashboardColors,
   type Palette,
-  type Tone,
+  type ToneSetting,
   type WidgetColors,
 } from "@/features/widgets/tone";
 import { Choice } from "./config-fields";
@@ -98,13 +98,14 @@ export function DashboardColorsControl({
 
   // Gabungan tema grafik + template status; semuanya bawaan → null (kolom kosong).
   const palette: Palette = colors?.palette ?? "default";
-  const status = statusColorsOf(colors);
-  const tone: Tone | undefined = colors?.tone;
+  // Template yang dipilih saja: turunan tema grafik tidak ikut tersimpan (tetap mengikuti tema).
+  const status = explicitStatusColorsOf(colors);
+  const tone: ToneSetting | undefined = colors?.tone;
   // Gabungan tema + template + penilaian bawaan; semuanya bawaan → null (kolom kosong).
   const merge = (next: {
     p?: Palette;
     st?: WidgetColors | undefined;
-    t?: Tone | undefined;
+    t?: ToneSetting | undefined;
   }): DashboardColors | null => {
     const p = "p" in next ? next.p! : palette;
     const st = "st" in next ? next.st : status;
@@ -228,17 +229,19 @@ export function DashboardColorsControl({
           <Choice
             label="Penilaian warna bawaan"
             testId="dashboard-tone"
-            value={tone ?? "none"}
+            value={tone ?? "up"}
             options={[
-              { value: "none", label: "Tanpa (atur per widget)" },
-              { value: "up", label: "Makin tinggi makin baik (mis. tepat waktu)" },
+              { value: "up", label: "Makin tinggi makin baik (bawaan, mis. tepat waktu)" },
               { value: "down", label: "Makin tinggi makin buruk (mis. klaim, retur)" },
+              { value: "none", label: "Tanpa warna (atur per widget)" },
             ]}
-            onChange={(v) => change(merge({ t: v === "none" ? undefined : (v as Tone) }))}
+            // "up" = bawaan, tidak disimpan (kolom tetap kosong bila semuanya bawaan).
+            onChange={(v) => change(merge({ t: v === "up" ? undefined : (v as ToneSetting) }))}
           />
           <p className="text-xs text-muted-foreground" data-testid="dashboard-colors-hint">
-            Warna status (hijau baik, merah perlu perhatian) untuk semua widget Batang, Garis, Pai,
-            dan Pivot yang belum memilih <strong>Penilaian warna</strong> sendiri. Angka yang
+            Level tinggi/sedang/rendah otomatis (hijau baik, merah perlu perhatian) untuk semua widget
+            Batang, Garis, Pai, dan Pivot yang belum memilih <strong>Penilaian warna</strong> sendiri.
+            Warna level mengikuti tema grafik bila template di bawah belum dipilih. Angka yang
             arahnya terbalik (mis. klaim) atau tidak perlu diwarnai: ubah di pengaturan widget itu.
             Tabel diwarnai per kolom di pengaturan Tabel; Angka hanya dengan batas angka.
           </p>

@@ -176,7 +176,8 @@ test.describe("tema grafik, arah batang, garis tren, Yang baru (v1.10.0)", () =>
     // ECharts selesai menggambar diabaikan grafik → ulangi sampai filter terpasang.
     const chip = owner.getByTestId("cross-filter-chip");
     await expect(async () => {
-      await owner.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.8);
+      // 0,6: legenda status (level otomatis, T-se9h) memendekkan grafik — 0,8 jatuh di label sumbu.
+      await owner.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.6);
       await expect(chip).toBeVisible({ timeout: 1_500 });
     }).toPass({ timeout: 20_000 });
     await expect(chip).toContainText("Jun 2026");
@@ -188,7 +189,6 @@ test.describe("tema grafik, arah batang, garis tren, Yang baru (v1.10.0)", () =>
     test.setTimeout(120_000);
     await owner.goto(`/dashboards/${d}?mode=edit`);
     const legend = card(owner).getByTestId("status-legend");
-    await expect(legend).toHaveCount(0);
 
     await owner.getByTestId("dashboard-colors").click();
     const pop = owner.getByTestId("dashboard-colors-panel");
@@ -196,8 +196,14 @@ test.describe("tema grafik, arah batang, garis tren, Yang baru (v1.10.0)", () =>
       owner.waitForResponse(
         (r) => r.request().method() === "PATCH" && r.url().endsWith(`/api/dashboards/${d}/colors`),
       );
+    // T-se9h: bawaan = makin tinggi makin baik; "Tanpa warna" mematikan level untuk seluruh dashboard.
+    await expect(pop.getByLabel("Penilaian warna bawaan", { exact: true })).toContainText("bawaan");
     let saving = savedColors();
-    await pick(owner, pop, "Penilaian warna bawaan", "Makin tinggi makin baik (mis. tepat waktu)");
+    await pick(owner, pop, "Penilaian warna bawaan", "Tanpa warna (atur per widget)");
+    expect((await saving).status()).toBe(200);
+    await expect(legend).toHaveCount(0, { timeout: 20_000 });
+    saving = savedColors();
+    await pick(owner, pop, "Penilaian warna bawaan", "Makin tinggi makin baik (bawaan, mis. tepat waktu)");
     expect((await saving).status()).toBe(200);
     saving = savedColors();
     await pick(owner, pop, "Tema grafik", /^Pantai/);

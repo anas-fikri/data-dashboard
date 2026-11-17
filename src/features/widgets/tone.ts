@@ -77,8 +77,11 @@ export const dashboardColorsSchema = z
     template: z.enum(COLOR_TEMPLATES).optional(),
     custom: z.tuple([hexColorSchema, hexColorSchema, hexColorSchema]).optional(),
     palette: z.enum(PALETTES).optional(),
-    /** Penilaian warna bawaan (v1.11.0) untuk nilai widget yang tidak memilih penilaian sendiri. */
-    tone: toneSchema.optional(),
+    /**
+     * Penilaian warna bawaan (v1.11.0) untuk nilai widget yang tidak memilih penilaian sendiri. Sejak
+     * v1.23 (T-se9h) tidak diatur = "up" (level otomatis aktif); "none" = dashboard sengaja tanpa warna.
+     */
+    tone: toneSettingSchema.optional(),
   })
   .strict()
   .refine((c) => c.template !== "custom" || c.custom !== undefined, {
@@ -87,12 +90,39 @@ export const dashboardColorsSchema = z
   });
 export type DashboardColors = z.infer<typeof dashboardColorsSchema>;
 
-/** Bagian template warna status dari pengaturan dashboard; undefined = bawaan. */
-export function statusColorsOf(c: DashboardColors | null | undefined): WidgetColors | undefined {
+/** Penilaian bawaan dashboard yang berlaku (T-se9h): tidak diatur = makin tinggi makin baik. */
+export function dashboardTone(c: DashboardColors | null | undefined): Tone | undefined {
+  return c?.tone === "none" ? undefined : (c?.tone ?? "up");
+}
+
+/**
+ * Template status yang mengikuti tema grafik bila dashboard belum memilih template (T-se9h): tema ramah
+ * buta warna → biru–oranye; tema bersaturasi tinggi → tegas; lainnya (termasuk bawaan) → lembut.
+ */
+const PALETTE_STATUS: Partial<Record<Palette, Exclude<ColorTemplate, "custom">>> = {
+  cvd: "cvd",
+  cerah: "bold",
+  klasik: "bold",
+  senja: "bold",
+  beri: "bold",
+};
+
+/** Template status yang DIPILIH di dashboard (tanpa turunan tema); undefined = belum dipilih. */
+export function explicitStatusColorsOf(
+  c: DashboardColors | null | undefined,
+): WidgetColors | undefined {
   if (!c?.template) return undefined;
   return c.template === "custom"
     ? { template: "custom", custom: c.custom! }
     : { template: c.template };
+}
+
+/** Template status yang berlaku di dashboard: pilihan sendiri, atau turunan tema grafik; undefined = bawaan. */
+export function statusColorsOf(c: DashboardColors | null | undefined): WidgetColors | undefined {
+  const own = explicitStatusColorsOf(c);
+  if (own) return own;
+  const derived = c?.palette ? PALETTE_STATUS[c.palette] : undefined;
+  return derived ? { template: derived } : undefined;
 }
 
 /**

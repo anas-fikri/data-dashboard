@@ -561,7 +561,7 @@ export async function exportStatus(
     return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   }
   // pdf: antrean mana yang memproses (T-r5tm, peringatan pemroses tidak aktif); tidak dikirim ke klien.
-  return { ok: true, pdf: row.format === "PDF", ...statusView(row, deps.now?.() ?? new Date()) };
+  return { ok: true, pdf: ["PDF", "PNG", "HTML"].includes(row.format), ...statusView(row, deps.now?.() ?? new Date()) };
 }
 
 /**
@@ -614,7 +614,7 @@ export async function downloadExport(
           meta: { sheetId: access.sheetId, exportId: row.id, format: ext, rows: row.rows, role },
           ip,
         }
-      : ext === "pdf"
+      : ext === "pdf" || ((ext === "png" || ext === "html") && !row.widgetId)
         ? {
             actorId: userId,
             action: "dashboard.export",
@@ -628,7 +628,13 @@ export async function downloadExport(
             action: "dashboard.widget.export",
             targetType: "dashboard",
             targetId: access.dashboardId,
-            meta: { widgetId: row.widgetId, exportId: row.id, format: ext, rows: row.rows, role },
+            meta: {
+              widgetId: row.widgetId,
+              exportId: row.id,
+              format: ext,
+              ...(ext === "png" ? {} : { rows: row.rows }),
+              role,
+            },
             ip,
           },
   );

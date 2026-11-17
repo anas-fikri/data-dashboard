@@ -67,13 +67,18 @@ export const SNAPSHOT_HTML = `(() => {
     try { for (const r of Array.from(sheet.cssRules)) css.push(r.cssText); } catch (e) {}
   }
   const root = document.documentElement.cloneNode(true);
-  root.querySelectorAll("script,link,noscript,base,iframe,object,embed").forEach((n) => n.remove());
+  root.querySelectorAll("script,style,link,noscript,base,iframe,object,embed,frame,meta,form,animate,set,animateMotion,animateTransform,foreignObject,use").forEach((n) => n.remove());
+  const URLISH = /^(href|src|srcset|action|formaction|xlink:href|poster|background|data|ping)$/;
   root.querySelectorAll("*").forEach((el) => {
     for (const a of Array.from(el.attributes)) {
-      const v = a.value.trim().toLowerCase();
-      if (a.name.startsWith("on") || ((a.name === "href" || a.name === "src") && v.startsWith("javascript:"))) {
-        el.removeAttribute(a.name);
-      }
+      const name = a.name.toLowerCase();
+      // Skema tanpa spasi/kontrol di dalamnya (browser mengabaikannya: "java\tscript:").
+      const v = a.value.replace(/[\\u0000-\\u0020]/g, "").toLowerCase();
+      const bad =
+        name.startsWith("on") ||
+        (URLISH.test(name) && !(v === "" || v.startsWith("#") || v.startsWith("data:image/"))) ||
+        (name === "style" && /url\\(|expression\\(/.test(v));
+      if (bad) el.removeAttribute(a.name);
     }
   });
   const head = root.querySelector("head") || root.insertBefore(document.createElement("head"), root.firstChild);
@@ -81,7 +86,8 @@ export const SNAPSHOT_HTML = `(() => {
   meta.setAttribute("charset", "utf-8");
   head.insertBefore(meta, head.firstChild);
   const style = document.createElement("style");
-  style.textContent = css.join("\\n") + "\\nbody{margin:16px auto;max-width:1100px}";
+  // url(...) di CSS menunjuk aset origin app (font/gambar): tidak ada di file offline → dibuang.
+  style.textContent = css.join("\\n").replace(/url\\([^)]*\\)/g, "none") + "\\nbody{margin:16px auto;max-width:1100px}";
   head.appendChild(style);
   return "<!doctype html>\\n" + root.outerHTML;
 })()`;
@@ -202,8 +208,15 @@ export async function renderPdf(
       }),
     );
     if (format === "png") {
+      // Chromium membatasi tangkapan ±16384 px per sisi: halaman tinggi (> 8000 px CSS) ditangkap skala 1.
+      const tall = Number(await guarded(page.evaluate("document.documentElement.scrollHeight"))) > 8000;
       const png = await guarded(
-        page.screenshot({ fullPage: true, type: "png", animations: "disabled" }),
+        page.screenshot({
+          fullPage: true,
+          type: "png",
+          animations: "disabled",
+          ...(tall ? { scale: "css" as const } : {}),
+        }),
       );
       if (violation) throw new RenderError("RENDER_BLOCKED");
       return png;
