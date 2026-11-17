@@ -21,3 +21,4 @@
 - Simpan dengan jeda + rantai promise: sediakan settle() yang ditunggu tombol keluar, dan jangan biarkan hasil gagal lama menahan tombol bila tidak ada yang menunggu. <!-- aitk:k date=2026-11-13 task=T-q3gm -->
 - Bawaan penilaian dashboard dibaca lewat dashboardTone(); kontrol simpan memakai explicitStatusColorsOf agar template turunan tema tidak tersimpan. <!-- aitk:k date=2026-11-17 task=T-se9h -->
 - Semua format snapshot (PDF/PNG/HTML) lewat jalur renderer yang sama; cek format di renderSubjectLive/exportStatus/audit harus mencakup ketiganya. <!-- aitk:k date=2026-11-17 task=T-7c8v -->
+- Cek basi optimistik: daftar baru dan expected HARUS dibangun dari daftar dasar yang sama di klien; mengambil expected dari sumber lain (store bersama) mengubah STALE yang aman menjadi lost update. <!-- aitk:k date=2026-11-17 task=T-4q8n tags=security,ui -->

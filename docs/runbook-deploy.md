@@ -1495,3 +1495,17 @@ Lalu seed panduan `viewer-lihat-filter-ekspor,susun-dashboard` (runbook "Isi pan
 **Rollback** ke v1.22.x: nilai enum PNG/HTML tetap di DB (tidak dipakai versi lama; ekspor PNG/HTML lama kedaluwarsa
 sendiri). Dashboard yang sudah memilih penilaian _Tanpa warna_ dibaca versi lama sebagai pengaturan warna kosong
 (tema kembali bawaan) — atur ulang setelah rollback bila perlu.
+
+## 46. Rilis v1.23.1 (tanpa migrasi)
+
+Kolom filter (T-4q8n): simpan dari tab basi ditolak dengan pesan muat ulang (tidak menimpa perubahan rekan); penghitung
+editor ikut kolom yang sedang tidak tersedia; pemilik bisa menambah kolom/menyimpan filter bawaan walau ada kolom tidak
+tersedia; tanda kolom yang juga menyaring sheet lain dan bawaan basi; unduhan dashboard tanpa status filter memakai filter
+bawaan. Bila v1.23.0 belum terpasang, pasang v1.23.1 langsung dengan `--full` (migrasi v1.23.0 ikut).
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.23.1
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.23.0 aman.
