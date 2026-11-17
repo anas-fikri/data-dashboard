@@ -1,16 +1,87 @@
 ---
 id: T-h807
 title: 'User online (admin): heartbeat per tab aktif ke Redis, jumlah online di kartu Server (admin) + daftar di Admin › Penggu…'
-status: in_review
+status: done
 profile: strict
 profile_pinned: true
 created: "2026-11-17T12:46:12Z"
-updated: "2026-11-17T13:53:45Z"
+updated: "2026-11-17T14:01:20Z"
+closed: "2026-11-17T14:01:20Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 6e84221c735fb650970fb63d86441851cf3d1900
+paths:
+  - CHANGELOG.md
+  - content/panduan/06-susun-dashboard.md
+  - content/panduan/09-viewer-lihat-filter-ekspor.md
+  - content/panduan/12-admin-email-dan-backup.md
+  - docs/runbook-deploy.md
+  - package-lock.json
+  - package.json
+  - prisma/migrations/20261117000000_export_png_html/migration.sql
+  - prisma/schema.prisma
+  - renderer/render.ts
+  - renderer/renderer.ts
+  - src/app/(app)/admin/pengguna/page.tsx
+  - src/app/(app)/dashboards/[id]/page.tsx
+  - src/app/api/metrics/route.ts
+  - src/app/api/presence/route.ts
+  - src/components/admin/online-users.tsx
+  - src/components/dashboards/dashboard-api.ts
+  - src/components/dashboards/dashboard-canvas.tsx
+  - src/components/dashboards/dashboard-colors-control.tsx
+  - src/components/dashboards/dashboard-pdf-export.tsx
+  - src/components/dashboards/filter-columns-settings.tsx
+  - src/components/dashboards/filter-columns-store.ts
+  - src/components/dashboards/filters/default-filters.tsx
+  - src/components/dashboards/filters/filter-bar.tsx
+  - src/components/dashboards/filters/filter-context.tsx
+  - src/components/metrics/server-card.tsx
+  - src/components/shell/app-shell.tsx
+  - src/components/shell/presence-beacon.tsx
+  - src/components/widgets/dashboard-colors.tsx
+  - src/components/widgets/export-menu.tsx
+  - src/components/widgets/export-model.ts
+  - src/components/widgets/export-status.tsx
+  - src/features/auth/rate-limit.ts
+  - src/features/dashboards/filter-columns.ts
+  - src/features/dashboards/http.ts
+  - src/features/dashboards/service.ts
+  - src/features/exports/filename.ts
+  - src/features/exports/http.ts
+  - src/features/exports/pdf-job.ts
+  - src/features/exports/render-session.ts
+  - src/features/exports/render-token.ts
+  - src/features/exports/renderer-client.ts
+  - src/features/exports/repo.ts
+  - src/features/exports/schema.ts
+  - src/features/exports/service.ts
+  - src/features/exports/types.ts
+  - src/features/metrics/view.ts
+  - src/features/presence/labels.ts
+  - src/features/presence/service.ts
+  - src/features/presence/store.ts
+  - src/features/whats-new/entries.ts
+  - src/features/widgets/tone.ts
+  - src/lib/api-route.ts
+  - src/lib/storage/exports.ts
+  - tests/components/filter-columns-multisheet.test.ts
+  - tests/components/online-users.test.ts
+  - tests/components/pdf-export-ui.test.ts
+  - tests/components/server-card.test.ts
+  - tests/e2e/chart-theme.spec.ts
+  - tests/e2e/exports.spec.ts
+  - tests/e2e/kpi-drill.spec.ts
+  - tests/e2e/presence.spec.ts
+  - tests/e2e/status-colors.spec.ts
+  - tests/features/dashboards/filter-columns.test.ts
+  - tests/features/exports/pdf-job.test.ts
+  - tests/features/exports/render-formats.test.ts
+  - tests/features/presence/presence.test.ts
+  - tests/features/widgets/tone-schema.test.ts
+  - tests/renderer/render.test.ts
 review:
   passes:
     - "n": 1
@@ -33,21 +104,21 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 206971
+    duration_ms: 209421
     summary: |-
       …vice":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1794923363478,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
-      {"level":40,"time":1794923370112,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
-      {"level":40,"time":1794923370113,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
-      {"level":40,"time":1794923370114,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794923822932,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
+      {"level":40,"time":1794923826363,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794923826367,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794923826369,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
 
        Test Files  259 passed | 1 skipped (260)
             Tests  3430 passed | 10 skipped (3440)
-         Start at  13:47:14
-         Duration  140.43s (tests 81%, import 16%, transform 3%)
+         Start at  13:54:52
+         Duration  143.44s (tests 80%, import 16%, transform 3%)
 
-          Isolate  260 workers spawned · ~108ms startup each (spawn + environment, per file)
-                   at least ~9.27s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  260 workers spawned · ~111ms startup each (spawn + environment, per file)
+                   at least ~9.47s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.23.1 audit
@@ -55,10 +126,23 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-11-17T13:49:36Z"
+    at: "2026-11-17T13:57:17Z"
     tree: ad48a245c0820a95d38c45164a0989efdaec97447b8bd6e1bb309b57521f1dae
+  commits:
+    - "4417829"
+    - 6e84221
+    - c54344a
+    - cc9ca98
+    - cdc3e64
+    - d458bb6
+    - e01b3d1
+    - eff56c2
+    - f2f6133
+  acceptance:
+    total: 7
+    done: 7
   audit:
-    at: "2026-11-17T13:49:37Z"
+    at: "2026-11-17T13:57:17Z"
     passed: true
     tree: ad48a245c0820a95d38c45164a0989efdaec97447b8bd6e1bb309b57521f1dae
     results:
@@ -68,7 +152,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
-          End status: 562 dirs visited, 6546 inodes visited, 1 Extract calls, 138.744267ms elapsed, 138.744625ms wall time
+          End status: 562 dirs visited, 6555 inodes visited, 1 Extract calls, 135.012999ms elapsed, 135.013174ms wall time
           Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
           No issues found
       - name: npm audit (prod high, dev critical)
@@ -118,3 +202,13 @@ Impact: satu request kecil per tab terlihat per menit (≈ jumlah user aktif/men
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tanpa file; path bukan URL (tanpa SSRF)
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — POST: origin wajib (rejectCrossOrigin), content-type JSON, body berbatas; GET no-store
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: konfigurasi tidak berubah
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-11-17T13:57:17Z (209421 ms)
+- Acceptance criteria: 7/7 satisfied
+- Commits: 4417829, 6e84221, c54344a, cc9ca98, cdc3e64, d458bb6, e01b3d1, eff56c2, f2f6133
+- Review pass 1 by claude-reviewer-subagent: 7 findings
+- Review pass 2 by claude-reviewer-subagent: 4 findings
+- Review pass 3 by claude-reviewer-subagent: 2 findings
+- Review pass 4 by claude-reviewer-subagent: 0 findings
