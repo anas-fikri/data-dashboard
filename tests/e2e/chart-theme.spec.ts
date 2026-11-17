@@ -203,7 +203,12 @@ test.describe("tema grafik, arah batang, garis tren, Yang baru (v1.10.0)", () =>
     expect((await saving).status()).toBe(200);
     await expect(legend).toHaveCount(0, { timeout: 20_000 });
     saving = savedColors();
-    await pick(owner, pop, "Penilaian warna bawaan", "Makin tinggi makin baik (bawaan, mis. tepat waktu)");
+    await pick(
+      owner,
+      pop,
+      "Penilaian warna bawaan",
+      "Makin tinggi makin baik (bawaan, mis. tepat waktu)",
+    );
     expect((await saving).status()).toBe(200);
     saving = savedColors();
     await pick(owner, pop, "Tema grafik", /^Pantai/);

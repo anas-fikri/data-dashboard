@@ -1,16 +1,47 @@
 ---
 id: T-se9h
 title: 'Skema warna: tema membawa warna level; level tinggi/normal/rendah otomatis aktif bawaan (arah makin tinggi makin baik),…'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-17T07:28:08Z"
-updated: "2026-11-17T08:18:41Z"
+updated: "2026-11-17T08:19:46Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 115d670758b76a83a203fa455ed07dd50760fe52
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-17T08:18:49Z"
+      findings: 0
 evidence:
+  check:
+    cmd: npm run check
+    exit_code: 1
+    duration_ms: 55955
+    summary: |-
+      > data-dashboard@1.22.1 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@1.22.1 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      [warn] content/panduan/09-viewer-lihat-filter-ekspor.md
+      [warn] renderer/renderer.ts
+      [warn] src/components/dashboards/dashboard-colors-control.tsx
+      [warn] src/components/dashboards/filters/filter-context.tsx
+      [warn] src/features/exports/service.ts
+      [warn] tests/components/pdf-export-ui.test.ts
+      [warn] tests/e2e/chart-theme.spec.ts
+      [warn] tests/features/exports/render-formats.test.ts
+      [warn] Code style issues found in 8 files. Run Prettier with --write to fix.
+    at: "2026-11-17T08:19:46Z"
+    tree: 281158583044802876ef8c0deb61878564872490d55c019a13f04fd7b0b03d7d
+  check_failures: 1
   audit:
     at: "2026-11-17T08:14:48Z"
     passed: true

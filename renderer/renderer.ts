@@ -212,7 +212,8 @@ export async function renderPdf(
     );
     if (format === "png") {
       // Chromium membatasi tangkapan ±16384 px per sisi: halaman tinggi (> 8000 px CSS) ditangkap skala 1.
-      const tall = Number(await guarded(page.evaluate("document.documentElement.scrollHeight"))) > 8000;
+      const tall =
+        Number(await guarded(page.evaluate("document.documentElement.scrollHeight"))) > 8000;
       const png = await guarded(
         page.screenshot({
           fullPage: true,

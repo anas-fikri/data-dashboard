@@ -273,7 +273,10 @@ export function useWidgetFilters(widgetId: string): WidgetFilters {
  * Dashboard + status filter yang diterapkan untuk ekspor gambar widget (T-7c8v); null di luar provider
  * (pratinjau editor tanpa dashboard).
  */
-export function useOptionalDashboardApplied(): { dashboardId: string; applied: FilterState } | null {
+export function useOptionalDashboardApplied(): {
+  dashboardId: string;
+  applied: FilterState;
+} | null {
   const ctx = useContext(FiltersContext);
   return ctx ? { dashboardId: ctx.dashboardId, applied: ctx.applied } : null;
 }

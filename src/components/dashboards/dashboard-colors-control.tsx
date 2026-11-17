@@ -239,11 +239,11 @@ export function DashboardColorsControl({
             onChange={(v) => change(merge({ t: v === "up" ? undefined : (v as ToneSetting) }))}
           />
           <p className="text-xs text-muted-foreground" data-testid="dashboard-colors-hint">
-            Level tinggi/sedang/rendah otomatis (hijau baik, merah perlu perhatian) untuk semua widget
-            Batang, Garis, Pai, dan Pivot yang belum memilih <strong>Penilaian warna</strong> sendiri.
-            Warna level mengikuti tema grafik bila template di bawah belum dipilih. Angka yang
-            arahnya terbalik (mis. klaim) atau tidak perlu diwarnai: ubah di pengaturan widget itu.
-            Tabel diwarnai per kolom di pengaturan Tabel; Angka hanya dengan batas angka.
+            Level tinggi/sedang/rendah otomatis (hijau baik, merah perlu perhatian) untuk semua
+            widget Batang, Garis, Pai, dan Pivot yang belum memilih <strong>Penilaian warna</strong>{" "}
+            sendiri. Warna level mengikuti tema grafik bila template di bawah belum dipilih. Angka
+            yang arahnya terbalik (mis. klaim) atau tidak perlu diwarnai: ubah di pengaturan widget
+            itu. Tabel diwarnai per kolom di pengaturan Tabel; Angka hanya dengan batas angka.
           </p>
           <DashboardColorsContext.Provider value={null}>
             <ColorTemplateFields colors={status} onChange={(st) => change(merge({ st }))} />

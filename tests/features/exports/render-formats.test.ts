@@ -16,12 +16,12 @@ describe("pdfBodySchema: format render", () => {
     for (const format of ["pdf", "png", "html"]) {
       expect(pdfBodySchema.safeParse({ dashboardId: DASH, format }).success).toBe(true);
     }
-    expect(pdfBodySchema.safeParse({ dashboardId: DASH, format: "png", widgetId: W1 }).success).toBe(
-      true,
-    );
-    expect(pdfBodySchema.safeParse({ dashboardId: DASH, format: "pdf", widgetId: W1 }).success).toBe(
-      false,
-    );
+    expect(
+      pdfBodySchema.safeParse({ dashboardId: DASH, format: "png", widgetId: W1 }).success,
+    ).toBe(true);
+    expect(
+      pdfBodySchema.safeParse({ dashboardId: DASH, format: "pdf", widgetId: W1 }).success,
+    ).toBe(false);
     expect(pdfBodySchema.safeParse({ dashboardId: DASH, format: "svg" }).success).toBe(false);
     expect(
       pdfBodySchema.safeParse({ dashboardId: DASH, format: "png", widgetId: "../x" }).success,
@@ -32,9 +32,9 @@ describe("pdfBodySchema: format render", () => {
 describe("looksLike: isi jawaban renderer sesuai format", () => {
   const enc = (s: string) => new TextEncoder().encode(s);
   it("PNG magic, HTML doctype, PDF header", () => {
-    expect(looksLike("png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).toBe(
-      true,
-    );
+    expect(
+      looksLike("png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0])),
+    ).toBe(true);
     expect(looksLike("png", enc("%PDF-1.7"))).toBe(false);
     expect(looksLike("html", enc("  <!DOCTYPE html><html></html>"))).toBe(true);
     expect(looksLike("html", enc("<script>x</script>"))).toBe(false);

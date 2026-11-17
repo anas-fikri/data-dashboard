@@ -193,7 +193,9 @@ describe("pemetaan keadaan PDF", () => {
       { type: "start", format: "pdf" },
       { type: "rejected", status: 503, code: "RENDERER_UNAVAILABLE" },
     ]);
-    expect(exportAnnouncement(failed, "")).toBe("PDF gagal dibuat. Buka Unduh dashboard untuk detail.");
+    expect(exportAnnouncement(failed, "")).toBe(
+      "PDF gagal dibuat. Buka Unduh dashboard untuk detail.",
+    );
     // PNG/HTML dashboard (T-yye9/T-c2bh): nama format sendiri; PNG widget (berjudul) memakai teks widget.
     const png = run([{ type: "start", format: "png" }]);
     expect(exportAnnouncement(png, "")).toBe("Menyiapkan gambar…");

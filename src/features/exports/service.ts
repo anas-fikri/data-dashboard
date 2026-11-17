@@ -561,7 +561,11 @@ export async function exportStatus(
     return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   }
   // pdf: antrean mana yang memproses (T-r5tm, peringatan pemroses tidak aktif); tidak dikirim ke klien.
-  return { ok: true, pdf: ["PDF", "PNG", "HTML"].includes(row.format), ...statusView(row, deps.now?.() ?? new Date()) };
+  return {
+    ok: true,
+    pdf: ["PDF", "PNG", "HTML"].includes(row.format),
+    ...statusView(row, deps.now?.() ?? new Date()),
+  };
 }
 
 /**
