@@ -80,10 +80,15 @@ const pdfFilterParam = z.string().max(PDF_FILTER_MAX);
 export const pdfBodySchema = z
   .object({
     dashboardId: cuid,
-    format: z.literal("pdf"),
+    format: z.enum(["pdf", "png", "html"]),
     f: pdfFilterParam.nullable().optional(),
+    widgetId: cuid.optional(),
   })
-  .strict();
+  .strict()
+  .refine((b) => !b.widgetId || b.format === "png", {
+    message: "Widget tunggal hanya bisa diekspor sebagai gambar (PNG)",
+    path: ["widgetId"],
+  });
 export type PdfBody = z.infer<typeof pdfBodySchema>;
 
 /** Export.params PDF: status filter yang sudah disaring saat buat (encoded) + jam preset tanggal. */
@@ -91,6 +96,8 @@ export const pdfParamsSchema = z
   .object({
     f: pdfFilterParam.optional(),
     requestedAt: z.string().datetime(),
+    /** PNG satu widget (T-7c8v). */
+    widgetId: cuid.optional(),
   })
   .strict();
 export type PdfParams = z.infer<typeof pdfParamsSchema>;

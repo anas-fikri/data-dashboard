@@ -76,6 +76,17 @@ export const pdfTooLargeMessage = (max: number) =>
 
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
 export const isPdf = (b: Uint8Array) => PDF_MAGIC.every((c, i) => b[i] === c);
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+/** Tanda tangan file per format (T-7c8v): PNG ber-magic, HTML diawali doctype. */
+export function looksLike(format: "pdf" | "png" | "html", b: Uint8Array): boolean {
+  if (format === "pdf") return isPdf(b);
+  if (format === "png") return PNG_MAGIC.every((c, i) => b[i] === c);
+  return new TextDecoder()
+    .decode(b.subarray(0, 64))
+    .trimStart()
+    .toLowerCase()
+    .startsWith("<!doctype html");
+}
 
 function messageOf(code: RenderFailureCode, maxBytes: number): string {
   switch (code) {
@@ -98,7 +109,8 @@ export async function runPdfJob(exportId: string, deps: PdfJobDeps): Promise<Pdf
     await repo.fail(row.id, code, message);
     return { outcome: "failed", code, ...(detail ? { detail } : {}) };
   };
-  if (row.format !== "PDF" || !row.dashboardId) {
+  const format = row.format === "PNG" ? "png" : row.format === "HTML" ? "html" : "pdf";
+  if ((row.format !== "PDF" && row.format !== "PNG" && row.format !== "HTML") || !row.dashboardId) {
     return failWith(EXPORT_CODES.NOT_FOUND, GONE_MESSAGE);
   }
   const params = pdfParamsSchema.safeParse(row.params);
@@ -119,10 +131,12 @@ export async function runPdfJob(exportId: string, deps: PdfJobDeps): Promise<Pdf
     dashboardId: row.dashboardId,
     ...(params.data.f ? { f: params.data.f } : {}),
     requestedAt: params.data.requestedAt,
+    ...(params.data.widgetId ? { widgetId: params.data.widgetId } : {}),
   });
   const r = await deps.renderer.render(token, {
     timeoutMs: deps.timeoutMs,
     maxBytes: deps.maxBytes,
+    format,
   });
   if (!r.ok) {
     if (r.busy) throw new RendererBusyError(r.detail);
@@ -132,17 +146,17 @@ export async function runPdfJob(exportId: string, deps: PdfJobDeps): Promise<Pdf
   if (pdf.byteLength > deps.maxBytes) {
     return failWith(EXPORT_CODES.EXPORT_TOO_LARGE, pdfTooLargeMessage(deps.maxBytes));
   }
-  if (!isPdf(pdf)) {
-    return failWith(EXPORT_CODES.EXPORT_FAILED, FAILED_MESSAGE, "jawaban renderer bukan PDF");
+  if (!looksLike(format, pdf)) {
+    return failWith(EXPORT_CODES.EXPORT_FAILED, FAILED_MESSAGE, `jawaban renderer bukan ${format}`);
   }
   // Ekspor dihapus selama render (user dihapus) → tidak ada yang diunggah.
   if (!(await repo.exists(row.id))) return { outcome: "skipped" };
 
-  const key = exportKey(row.userId, row.id, "pdf");
+  const key = exportKey(row.userId, row.id, format);
   let uploaded = false;
   try {
-    await deps.storage.put(key, pdf, MIME.pdf, {
-      contentDisposition: contentDisposition(row.fileName ?? "dashboard.pdf"),
+    await deps.storage.put(key, pdf, MIME[format], {
+      contentDisposition: contentDisposition(row.fileName ?? `dashboard.${format}`),
     });
     uploaded = true;
     const finishedAt = deps.now?.() ?? new Date();

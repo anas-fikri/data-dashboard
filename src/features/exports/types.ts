@@ -9,8 +9,11 @@ import type { DashFilter, PivotFilter } from "@/features/query/filters";
 /** Format ekspor widget (tabular). PDF hanya untuk dashboard utuh (PdfExportCreateBody). */
 export const EXPORT_FORMATS = ["csv", "xlsx"] as const;
 export type ExportFormatInput = (typeof EXPORT_FORMATS)[number];
+/** Ekspor lewat renderer (halaman cetak): PDF/HTML dashboard, PNG dashboard atau satu widget. */
+export const RENDER_FORMATS = ["pdf", "png", "html"] as const;
+export type RenderFormat = (typeof RENDER_FORMATS)[number];
 /** Ekstensi file ekspor apa pun (kunci objek, MIME, nama file). */
-export type ExportFileFormat = ExportFormatInput | "pdf";
+export type ExportFileFormat = ExportFormatInput | RenderFormat;
 
 export type ExportState = "queued" | "running" | "done" | "failed" | "expired";
 
@@ -49,8 +52,10 @@ export interface SheetExportCreateBody {
  */
 export interface PdfExportCreateBody {
   dashboardId: string;
-  format: "pdf";
+  format: RenderFormat;
   f?: string | null;
+  /** Hanya PNG: satu widget saja (T-7c8v); tidak ada = seluruh dashboard. */
+  widgetId?: string;
 }
 
 /** Jawaban GET /api/exports/[id] (selain { ok: true }). */

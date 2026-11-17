@@ -52,8 +52,13 @@ Bila dataset disimpan per periode dan pemilik memasang filter **Periode**, pilih
 
 ## Mengekspor
 
-- **Satu widget** — tekan ikon ekspor di kepala widget, pilih **CSV** atau **Excel (XLSX)**, lalu tunggu sebentar — file terunduh otomatis (tekan **Unduh lagi** bila perlu). Ekspor mengikuti filter yang sedang aktif.
-- **Seluruh dashboard** — tekan **Ekspor PDF** → **Buat PDF**.
+- **Satu widget** — tekan ikon unduh di kepala widget, lalu pilih:
+  - **Gambar (PNG)** — tampilan widget itu (grafik, angka, pivot) persis seperti di layar, untuk ditempel ke laporan atau chat.
+  - **CSV** atau **Excel (XLSX)** — datanya (tabel: semua baris tersaring; grafik/angka: nilai yang tampil).
+
+  Tunggu sebentar — file terunduh otomatis (tekan **Unduh lagi** bila perlu). Semua pilihan mengikuti filter yang sedang aktif.
+
+- **Seluruh dashboard** — tekan **Unduh dashboard**, lalu pilih **PDF (A4 lanskap)**, **Gambar (PNG)** satu halaman panjang, atau **Halaman (HTML)**. Ketiganya _snapshot_ tampilan dengan filter aktif. File HTML bisa dibuka di browser tanpa login dan tanpa internet, tetapi tidak interaktif (tanpa filter/klik). Untuk datanya, unduh CSV/Excel per widget.
 
 ## Tampilan tersimpan
 

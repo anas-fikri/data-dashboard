@@ -588,6 +588,10 @@ enum ExportFormat {
   CSV
   XLSX
   PDF
+  /// Gambar widget/dashboard lewat renderer (T-7c8v/T-yye9).
+  PNG
+  /// Dashboard satu file HTML (T-c2bh).
+  HTML
 }
 
 /// Ekspor widget/dashboard (T-017 CSV/XLSX, T-018 PDF). Status di DB (bukan antrean) agar kepemilikan,

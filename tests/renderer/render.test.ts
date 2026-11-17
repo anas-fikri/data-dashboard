@@ -16,7 +16,19 @@ const body = (value: unknown) => Buffer.from(JSON.stringify(value));
 
 describe("validateBody", () => {
   it("menerima persis {token} 43 karakter base64url", () => {
-    expect(validateBody(JSON_CT, body({ token: TOKEN }))).toEqual({ ok: true, token: TOKEN });
+    expect(validateBody(JSON_CT, body({ token: TOKEN }))).toEqual({
+      ok: true,
+      token: TOKEN,
+      format: "pdf",
+    });
+    // PNG/HTML (T-7c8v/T-c2bh); format lain ditolak.
+    expect(validateBody(JSON_CT, body({ token: TOKEN, format: "png" }))).toEqual({
+      ok: true,
+      token: TOKEN,
+      format: "png",
+    });
+    expect(validateBody(JSON_CT, body({ token: TOKEN, format: "html" })).ok).toBe(true);
+    expect(validateBody(JSON_CT, body({ token: TOKEN, format: "svg" })).ok).toBe(false);
     expect(validateBody("Application/JSON; charset=utf-8", body({ token: TOKEN })).ok).toBe(true);
   });
 

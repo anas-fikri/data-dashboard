@@ -19,3 +19,5 @@
 - Periode KPI berjalan dibandingkan dengan periode pembanding penuh + keterangan s.d.; bandingkan rentang hari sama ditunda (mengubah angka). <!-- aitk:k date=2026-11-13 task=T-tyb1 tags=widgets -->
 - Rentang hari yang sama: pe = least(ps + to_days(md - cs + 1), ps + step) di DuckDB; cs - INTERVAL menjadi TIMESTAMP sehingga tambah hari harus INTERVAL (to_days), bukan bilangan. <!-- aitk:k date=2026-11-13 task=T-f167 -->
 - Simpan dengan jeda + rantai promise: sediakan settle() yang ditunggu tombol keluar, dan jangan biarkan hasil gagal lama menahan tombol bila tidak ada yang menunggu. <!-- aitk:k date=2026-11-13 task=T-q3gm -->
+- Bawaan penilaian dashboard dibaca lewat dashboardTone(); kontrol simpan memakai explicitStatusColorsOf agar template turunan tema tidak tersimpan. <!-- aitk:k date=2026-11-17 task=T-se9h -->
+- Semua format snapshot (PDF/PNG/HTML) lewat jalur renderer yang sama; cek format di renderSubjectLive/exportStatus/audit harus mencakup ketiganya. <!-- aitk:k date=2026-11-17 task=T-7c8v -->

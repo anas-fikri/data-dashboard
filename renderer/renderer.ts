@@ -24,7 +24,7 @@ import {
   isAllowedWebSocketUrl,
   validateBody,
 } from "./render";
-import type { RenderErrorCode } from "./render";
+import type { RenderErrorCode, RenderFormat } from "./render";
 
 export type RenderConfig = Pick<
   RendererEnv,
@@ -46,9 +46,54 @@ export const CONTEXT_OPTIONS: BrowserContextOptions = {
   acceptDownloads: false,
 };
 
+const CONTENT_TYPE: Record<RenderFormat, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  html: "text/html; charset=utf-8",
+};
+
 const FOOTER_TEMPLATE =
   '<div style="width:100%;padding:0 10mm;font-family:system-ui,sans-serif;font-size:8px;color:#555;text-align:right;">' +
   'Halaman <span class="pageNumber"></span> dari <span class="totalPages"></span></div>';
+
+/**
+ * Dijalankan di halaman (string, bukan fungsi tertutup: tanpa variabel luar). Kembalikan HTML lengkap.
+ * Teks CSS diambil dari document.styleSheets (origin app sendiri); aturan @media print dibiarkan apa
+ * adanya. <script>, <link>, <noscript>, atribut on*, dan <base> dibuang dari salinan.
+ */
+export const SNAPSHOT_HTML = `(() => {
+  const css = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    try { for (const r of Array.from(sheet.cssRules)) css.push(r.cssText); } catch (e) {}
+  }
+  const root = document.documentElement.cloneNode(true);
+  root.querySelectorAll("script,style,link,noscript,base,iframe,object,embed,frame,meta,form,animate,set,animateMotion,animateTransform,foreignObject,use").forEach((n) => n.remove());
+  const URLISH = /^(href|src|srcset|action|formaction|xlink:href|poster|background|data|ping)$/;
+  root.querySelectorAll("*").forEach((el) => {
+    for (const a of Array.from(el.attributes)) {
+      const name = a.name.toLowerCase();
+      // Skema tanpa spasi/kontrol di dalamnya (browser mengabaikannya: "java\tscript:").
+      const v = a.value.replace(/[\\u0000-\\u0020]/g, "").toLowerCase();
+      const bad =
+        name.startsWith("on") ||
+        (URLISH.test(name) && !(v === "" || v.startsWith("#") || v.startsWith("data:image/"))) ||
+        (name === "style" && /\\\\|url|image-set|expression|@import/.test(v));
+      if (bad) el.removeAttribute(a.name);
+    }
+  });
+  const head = root.querySelector("head") || root.insertBefore(document.createElement("head"), root.firstChild);
+  const meta = document.createElement("meta");
+  meta.setAttribute("charset", "utf-8");
+  head.insertBefore(meta, head.firstChild);
+  const style = document.createElement("style");
+  // url(...) di CSS menunjuk aset origin app (font/gambar): tidak ada di file offline → dibuang.
+  style.textContent = css
+    .filter((r) => !/^@(import|font-face)/i.test(r))
+    .join("\\n")
+    .replace(/(url|image-set)\\((?:"[^"]*"|'[^']*'|[^)])*\\)/gi, "none") + "\\nbody{margin:16px auto;max-width:1100px}";
+  head.appendChild(style);
+  return "<!doctype html>\\n" + root.outerHTML;
+})()`;
 
 export class RenderError extends Error {
   readonly code: RenderErrorCode;
@@ -69,6 +114,7 @@ export async function renderPdf(
   token: string,
   cfg: RenderConfig,
   signal?: AbortSignal,
+  format: RenderFormat = "pdf",
 ): Promise<Buffer> {
   const origin = cfg.APP_INTERNAL_URL;
   const deadline = Date.now() + cfg.RENDER_READY_TIMEOUT_MS;
@@ -91,7 +137,10 @@ export async function renderPdf(
   /** Langkah halaman berpacu dengan pelanggaran allowlist: job gagal segera, tidak menunggu timeout. */
   const guarded = <T>(step: Promise<T>) => Promise.race([step, blocked]);
 
-  const ctx = await browser.newContext(CONTEXT_OPTIONS);
+  // PNG: kerapatan 2× agar tajam di layar HP/laporan (T-7c8v).
+  const ctx = await browser.newContext(
+    format === "png" ? { ...CONTEXT_OPTIONS, deviceScaleFactor: 2 } : CONTEXT_OPTIONS,
+  );
   const onAbort = () => void ctx.close().catch(() => {});
   signal?.addEventListener("abort", onAbort, { once: true });
   if (signal?.aborted) onAbort();
@@ -161,6 +210,28 @@ export async function renderPdf(
         timeout: remaining(),
       }),
     );
+    if (format === "png") {
+      // Chromium membatasi tangkapan ±16384 px per sisi: halaman tinggi (> 8000 px CSS) ditangkap skala 1.
+      const tall =
+        Number(await guarded(page.evaluate("document.documentElement.scrollHeight"))) > 8000;
+      const png = await guarded(
+        page.screenshot({
+          fullPage: true,
+          type: "png",
+          animations: "disabled",
+          ...(tall ? { scale: "css" as const } : {}),
+        }),
+      );
+      if (violation) throw new RenderError("RENDER_BLOCKED");
+      return png;
+    }
+    if (format === "html") {
+      // Satu file mandiri (T-c2bh): CSS halaman ditanam, skrip/stylesheet luar/preload dibuang. Grafik
+      // ECharts sudah SVG di DOM, jadi tetap tampil tanpa skrip.
+      const html = String(await guarded(page.evaluate(SNAPSHOT_HTML)));
+      if (violation) throw new RenderError("RENDER_BLOCKED");
+      return Buffer.from(html, "utf8");
+    }
     const pdf = await guarded(
       page.pdf({
         format: "A4",
@@ -314,10 +385,10 @@ export function createRenderer(
       if (!res.writableFinished) controller.abort();
     });
     try {
-      const pdf = await renderPdf(current, body.token, cfg, controller.signal);
+      const pdf = await renderPdf(current, body.token, cfg, controller.signal, body.format);
       if (controller.signal.aborted) return done("client_closed");
       res.writeHead(200, {
-        "content-type": "application/pdf",
+        "content-type": CONTENT_TYPE[body.format],
         "content-length": pdf.byteLength,
         "cache-control": "no-store",
       });

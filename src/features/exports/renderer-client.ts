@@ -37,7 +37,13 @@ export interface RendererClient {
   health(timeoutMs?: number): Promise<boolean>;
   render(
     token: string,
-    opts: { timeoutMs: number; maxBytes: number; signal?: AbortSignal },
+    opts: {
+      timeoutMs: number;
+      maxBytes: number;
+      signal?: AbortSignal;
+      /** Bawaan pdf (T-7c8v: png, T-c2bh: html). */
+      format?: "pdf" | "png" | "html";
+    },
   ): Promise<RenderResult>;
 }
 
@@ -108,7 +114,7 @@ export function rendererClient(cfg: RendererConfig): RendererClient {
       }
     },
 
-    async render(token, { timeoutMs, maxBytes, signal }) {
+    async render(token, { timeoutMs, maxBytes, signal, format = "pdf" }) {
       if (!base || !secret) return fail("RENDERER_UNAVAILABLE", "renderer tidak dikonfigurasi");
       const timeout = AbortSignal.timeout(timeoutMs);
       const sig = signal ? AbortSignal.any([timeout, signal]) : timeout;
@@ -118,7 +124,7 @@ export function rendererClient(cfg: RendererConfig): RendererClient {
         res = await doFetch(`${base}/render`, {
           method: "POST",
           headers: { "content-type": "application/json", "x-renderer-secret": secret },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify(format === "pdf" ? { token } : { token, format }),
           signal: sig,
           redirect: "error",
           cache: "no-store",
@@ -140,9 +146,10 @@ export function rendererClient(cfg: RendererConfig): RendererClient {
         return fail("EXPORT_FAILED", `renderer menjawab ${res.status}`);
       }
       const type = res.headers.get("content-type") ?? "";
-      if (!type.toLowerCase().startsWith("application/pdf")) {
+      const want = { pdf: "application/pdf", png: "image/png", html: "text/html" }[format];
+      if (!type.toLowerCase().startsWith(want)) {
         await res.body?.cancel().catch(() => {});
-        return fail("EXPORT_FAILED", "renderer menjawab bukan application/pdf");
+        return fail("EXPORT_FAILED", `renderer menjawab bukan ${want}`);
       }
       try {
         const pdf = await readCapped(res, maxBytes, sig);

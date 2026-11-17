@@ -21,6 +21,8 @@ export const FORMAT_LABEL: Record<ExportFileFormat, string> = {
   csv: "CSV",
   xlsx: "Excel (XLSX)",
   pdf: "PDF",
+  png: "Gambar (PNG)",
+  html: "Halaman (HTML)",
 };
 export const exportStatusUrl = (id: string) => `/api/exports/${encodeURIComponent(id)}`;
 export const exportDownloadUrl = (id: string) => `${exportStatusUrl(id)}/download`;
@@ -76,14 +78,23 @@ const TEXT: Record<string, string> = {
   [C.RENDERER_UNAVAILABLE]:
     "Layanan pembuat PDF sedang tidak tersedia. Coba lagi beberapa saat lagi.",
 };
-/** PDF dashboard (T-018): sasarannya dashboard utuh, batasnya waktu render dan ukuran file. */
-const PDF_TEXT: Record<string, string> = {
-  [C.NOT_FOUND]: "Dashboard ini tidak ditemukan atau akses Anda sudah dicabut. Muat ulang halaman.",
-  [C.EXPORT_TIMEOUT]: "PDF tidak selesai dibuat dalam batas waktu. Coba lagi beberapa saat lagi.",
-  [C.EXPORT_TOO_LARGE]:
-    "PDF melebihi batas ukuran file. Persempit filter dashboard lalu ekspor lagi.",
-  [C.EXPORT_FAILED]: "PDF gagal dibuat. Coba lagi beberapa saat lagi.",
-};
+/** Format snapshot lewat renderer (PDF T-018; PNG/HTML T-7c8v/T-yye9/T-c2bh). */
+export const isRenderFormat = (f: ExportFileFormat | undefined): f is "pdf" | "png" | "html" =>
+  f === "pdf" || f === "png" || f === "html";
+/** Nama file snapshot di awal kalimat. */
+export const RENDER_NAME = { pdf: "PDF", png: "Gambar", html: "Halaman HTML" } as const;
+/** Snapshot (renderer): batasnya waktu render dan ukuran file, bukan jumlah baris. */
+function renderText(code: string, format: "pdf" | "png" | "html"): string | undefined {
+  const n = RENDER_NAME[format];
+  const t: Record<string, string> = {
+    [C.NOT_FOUND]:
+      "Dashboard ini tidak ditemukan atau akses Anda sudah dicabut. Muat ulang halaman.",
+    [C.EXPORT_TIMEOUT]: `${n} tidak selesai dibuat dalam batas waktu. Coba lagi beberapa saat lagi.`,
+    [C.EXPORT_TOO_LARGE]: `${n} melebihi batas ukuran file. Persempit filter dashboard lalu ekspor lagi.`,
+    [C.EXPORT_FAILED]: `${n} gagal dibuat. Coba lagi beberapa saat lagi.`,
+  };
+  return t[code];
+}
 const FALLBACK = "Ekspor belum bisa dibuat. Coba lagi beberapa saat lagi.";
 /** Kode yang teksnya milik klien: langkah berikutnya ada di tombol/teks sendiri, bukan pesan server. */
 const OWN_TEXT = new Set<string>([C.EXPORT_EXPIRED, C.NOT_FOUND, EXPORT_GONE, OFFLINE, SESSION]);
@@ -97,10 +108,10 @@ export function exportError(
   format?: ExportFileFormat,
 ): ExportError {
   const own = OWN_TEXT.has(code) ? undefined : serverMessage?.trim();
-  const pdf = format === "pdf";
+  const pdf = isRenderFormat(format);
   return {
     code,
-    message: own || (pdf ? PDF_TEXT[code] : undefined) || TEXT[code] || FALLBACK,
+    message: own || (pdf ? renderText(code, format) : undefined) || TEXT[code] || FALLBACK,
     // Saran mempersempit baris hanya untuk file tabular (batas PDF = ukuran file, bukan baris).
     ...(code === C.EXPORT_TOO_LARGE && !pdf ? { hint: TOO_LARGE_HINT } : {}),
     again: code === C.EXPORT_EXPIRED || code === EXPORT_GONE,
@@ -261,11 +272,18 @@ export function doneDetail(rows: number | null, expiresAt: string | null): strin
 
 /** Baris status selama ekspor berjalan (teks yang juga diumumkan wilayah status). */
 export const busyLabel = (format: ExportFileFormat) =>
-  format === "pdf" ? "Menyiapkan PDF…" : "Menyiapkan ekspor…";
+  format === "pdf"
+    ? "Menyiapkan PDF…"
+    : format === "png"
+      ? "Menyiapkan gambar…"
+      : format === "html"
+        ? "Menyiapkan halaman HTML…"
+        : "Menyiapkan ekspor…";
 
 /** Pengumuman pembaca layar saat menu ekspor tertutup (wilayah status di dalam menu ikut tertutup). */
 export function exportAnnouncement(job: ExportJob, title: string): string {
-  if (job.phase !== "idle" && job.format === "pdf") return pdfAnnouncement(job);
+  // Unduhan dashboard (kepala halaman, tanpa judul widget).
+  if (job.phase !== "idle" && isRenderFormat(job.format) && !title) return pdfAnnouncement(job);
   switch (job.phase) {
     case "starting":
     case "running":
@@ -281,7 +299,8 @@ export function exportAnnouncement(job: ExportJob, title: string): string {
 
 /** PDF dashboard (T-018): satu sasaran per halaman, jadi tanpa judul widget. */
 function pdfAnnouncement(job: Exclude<ExportJob, { phase: "idle" }>): string {
-  if (job.phase === "done") return "PDF siap diunduh.";
-  if (job.phase === "error") return "Ekspor PDF gagal. Buka Ekspor PDF untuk detail.";
-  return busyLabel("pdf");
+  const n = isRenderFormat(job.format) ? RENDER_NAME[job.format] : "Ekspor";
+  if (job.phase === "done") return `${n} siap diunduh.`;
+  if (job.phase === "error") return `${n} gagal dibuat. Buka Unduh dashboard untuk detail.`;
+  return busyLabel(job.format);
 }

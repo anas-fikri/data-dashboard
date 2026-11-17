@@ -33,6 +33,8 @@ export interface RenderClaims {
   f?: string;
   /** ISO; jam preset tanggal filter (sama dengan saat ekspor diminta). */
   requestedAt: string;
+  /** PNG satu widget (T-7c8v): halaman cetak hanya memuat widget ini. */
+  widgetId?: string;
 }
 
 export interface RenderTokenStore {
@@ -50,6 +52,7 @@ const storedSchema = z
     dashboardId: cuid,
     f: z.string().max(PDF_FILTER_MAX).optional(),
     requestedAt: z.string().datetime(),
+    widgetId: cuid.optional(),
     /** Epoch ms kedaluwarsa (token dan sesi turunannya). */
     exp: z.number().int(),
   })
@@ -81,6 +84,7 @@ export async function mintRenderToken(
     dashboardId: claims.dashboardId,
     ...(claims.f ? { f: claims.f } : {}),
     requestedAt: claims.requestedAt,
+    ...(claims.widgetId ? { widgetId: claims.widgetId } : {}),
     exp: now + RENDER_TOKEN_TTL_MS,
   };
   const ok = await store.setNx(
@@ -131,6 +135,7 @@ export async function consumeRenderSessionClaims(
     dashboardId: s.dashboardId,
     ...(s.f ? { f: s.f } : {}),
     requestedAt: s.requestedAt,
+    ...(s.widgetId ? { widgetId: s.widgetId } : {}),
   };
 }
 

@@ -156,7 +156,8 @@ export async function renderSubjectLive(c: {
         id: c.exportId,
         userId: c.userId,
         dashboardId: c.dashboardId,
-        format: "PDF",
+        // Semua format lewat renderer (PDF, PNG, HTML — T-7c8v/T-c2bh).
+        format: { in: ["PDF", "PNG", "HTML"] },
         status: "RUNNING",
       },
     }),

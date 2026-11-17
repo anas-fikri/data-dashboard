@@ -130,6 +130,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.23.0] - 2026-11-17
+
+### Added
+
+- **exports:** unduh gambar PNG widget/dashboard dan halaman HTML (T-7c8v, T-yye9, T-c2bh) (115d670)
+
+### Fixed
+
+- **exports:** PNG/HTML lolos cek sesi render, audit, antrean; sanitasi HTML diperketat; feat(warna): level otomatis + ikut tema (T-se9h) (a74bd58)
+- sanitasi HTML (escape CSS, @import), next 16.4.5 (GHSA-mfr8-8qww-v76h); panduan + Yang baru v1.23 (77d1cfb)
+
 ## [1.22.1] - 2026-11-13
 
 ### Fixed

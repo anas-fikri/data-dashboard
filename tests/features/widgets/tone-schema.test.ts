@@ -5,7 +5,12 @@ import {
   tableDisplaySchema,
 } from "@/features/widgets/bound";
 import { parseWidgetConfig } from "@/features/widgets/spec";
-import { dashboardColorsSchema, statusColorsOf } from "@/features/widgets/tone";
+import {
+  dashboardColorsSchema,
+  dashboardTone,
+  explicitStatusColorsOf,
+  statusColorsOf,
+} from "@/features/widgets/tone";
 
 /*
  * v1.6.2 menerima field warna status (tone per nilai, colors per widget) tanpa memakainya, agar
@@ -234,9 +239,27 @@ describe("penilaian warna bawaan dashboard + tema tambahan (v1.11.0)", () => {
 
   it("dashboard menyimpan penilaian bawaan + tema baru", () => {
     expect(dashboardColorsSchema.safeParse({ tone: "up", palette: "pantai" }).success).toBe(true);
-    expect(dashboardColorsSchema.safeParse({ tone: "none" }).success).toBe(false);
+    // T-se9h: "none" = dashboard sengaja tanpa warna (tidak diatur = "up").
+    expect(dashboardColorsSchema.safeParse({ tone: "none" }).success).toBe(true);
+    expect(dashboardColorsSchema.safeParse({ tone: "x" }).success).toBe(false);
     for (const p of ["klasik", "bumi", "senja", "cerah", "laut", "beri", "ungu"]) {
       expect(dashboardColorsSchema.safeParse({ palette: p }).success).toBe(true);
     }
+  });
+});
+
+describe("T-se9h: level otomatis + warna level ikut tema", () => {
+  it("penilaian bawaan: tidak diatur = up, none = mati", () => {
+    expect(dashboardTone(null)).toBe("up");
+    expect(dashboardTone({})).toBe("up");
+    expect(dashboardTone({ tone: "down" })).toBe("down");
+    expect(dashboardTone({ tone: "none" })).toBeUndefined();
+  });
+  it("template status: pilihan sendiri menang; tanpa pilihan ikut tema", () => {
+    expect(statusColorsOf({ palette: "cvd" })).toEqual({ template: "cvd" });
+    expect(statusColorsOf({ palette: "cerah" })).toEqual({ template: "bold" });
+    expect(statusColorsOf({ palette: "bumi" })).toBeUndefined();
+    expect(statusColorsOf({ palette: "cvd", template: "soft" })).toEqual({ template: "soft" });
+    expect(explicitStatusColorsOf({ palette: "cvd" })).toBeUndefined();
   });
 });

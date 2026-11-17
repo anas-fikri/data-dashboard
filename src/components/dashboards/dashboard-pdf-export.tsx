@@ -1,9 +1,16 @@
 "use client";
 
-import { IconFileTypePdf, IconLoader2 } from "@tabler/icons-react";
+import {
+  IconDownload,
+  IconFileTypeHtml,
+  IconFileTypePdf,
+  IconLoader2,
+  IconPhoto,
+} from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { revealKeyboardFocus } from "@/components/widgets/export-menu";
 import {
@@ -14,7 +21,7 @@ import {
 } from "@/components/widgets/export-model";
 import { AGAIN_ATTR, ExportStatus, NEWS_ATTR } from "@/components/widgets/export-status";
 import { useExportJob } from "@/components/widgets/use-export-job";
-import type { PdfExportCreateBody } from "@/features/exports/types";
+import type { ExportFileFormat, PdfExportCreateBody, RenderFormat } from "@/features/exports/types";
 import { appliedFiltersOf } from "./filters/applied-store";
 import { encodeFilterParam, parseFilterParam, type FilterState } from "./filters/filter-model";
 
@@ -37,10 +44,18 @@ export function pdfExportBody(
   dashboardId: string,
   applied: FilterState | null,
   urlF: string | null,
+  format: RenderFormat = "pdf",
 ): PdfExportCreateBody {
   const f = encodeFilterParam(applied ?? parseFilterParam(urlF ?? undefined));
-  return f ? { dashboardId, format: "pdf", f } : { dashboardId, format: "pdf" };
+  return f ? { dashboardId, format, f } : { dashboardId, format };
 }
+
+/** Pilihan unduhan dashboard (T-yye9/T-c2bh): semuanya snapshot tampilan sesuai filter aktif. */
+const PAGE_FORMATS = [
+  { format: "pdf", label: "PDF (A4 lanskap)", icon: IconFileTypePdf },
+  { format: "png", label: "Gambar (PNG)", icon: IconPhoto },
+  { format: "html", label: "Halaman (HTML)", icon: IconFileTypeHtml },
+] as const;
 
 const SPINNER = <IconLoader2 className="motion-safe:animate-spin" aria-hidden />;
 
@@ -59,7 +74,7 @@ export function DashboardPdfWatch({ dashboardId }: { dashboardId: string }) {
     job === mounted
       ? ""
       : job.phase === "error"
-        ? "Ekspor PDF gagal. Detailnya ada di Ekspor PDF pada mode lihat."
+        ? "Unduhan dashboard gagal. Detailnya ada di Unduh dashboard pada mode lihat."
         : exportAnnouncement(job, "");
   return (
     <span role="status" className="sr-only" data-testid="dashboard-pdf-watch">
@@ -82,10 +97,10 @@ export function DashboardPdfExport({ dashboardId }: { dashboardId: string }) {
   const content = useRef<HTMLDivElement>(null);
   const create = useRef<HTMLButtonElement>(null);
 
-  function run() {
-    if (busy) return;
+  function run(format: ExportFileFormat = "pdf") {
+    if (busy || (format !== "pdf" && format !== "png" && format !== "html")) return;
     const urlF = new URL(window.location.href).searchParams.get("f");
-    void start(pdfExportBody(dashboardId, appliedFiltersOf(dashboardId), urlF));
+    void start(pdfExportBody(dashboardId, appliedFiltersOf(dashboardId), urlF, format));
   }
 
   // Elemen terfokus hilang karena status berubah → fokus ke "Ekspor lagi" atau "Buat PDF".
@@ -120,9 +135,9 @@ export function DashboardPdfExport({ dashboardId }: { dashboardId: string }) {
             variant="outline"
             data-testid="dashboard-pdf-export"
             className="w-full h-(--control-h-lg) md:h-(--control-h)"
-            leadingIcon={busy ? SPINNER : <IconFileTypePdf aria-hidden />}
+            leadingIcon={busy ? SPINNER : <IconDownload aria-hidden />}
           >
-            Ekspor PDF
+            Unduh dashboard
             {unseenError ? (
               <span
                 aria-hidden
@@ -141,26 +156,38 @@ export function DashboardPdfExport({ dashboardId }: { dashboardId: string }) {
         >
           <div>
             <p id={headingId} className="text-sm font-semibold">
-              Ekspor PDF
+              Unduh dashboard
             </p>
             <p className="text-xs text-muted-foreground">
-              Semua widget dengan filter yang sedang aktif, A4 lanskap. Tabel memuat baris yang muat
-              di kartunya, dalam urutan bawaan.
+              Snapshot semua widget dengan filter yang sedang aktif. Tabel memuat baris yang muat di
+              kartunya. HTML bisa dibuka tanpa login, tanpa interaksi. Datanya: unduh per widget.
             </p>
           </div>
           {/* Tanpa gap: wilayah status yang kosong tidak menambah jarak (isinya membawa margin). */}
           <div className="flex flex-col">
-            <Button
-              ref={create}
-              data-testid="export-pdf"
-              className="w-full h-(--control-h-lg) md:not-any-pointer-coarse:h-(--control-h) aria-disabled:pointer-events-none"
-              // Berjalan: tetap fokusabel (tekan diabaikan) — polling tidak pernah membuang fokus.
-              aria-disabled={busy || undefined}
-              leadingIcon={busy ? SPINNER : <IconFileTypePdf aria-hidden />}
-              onClick={run}
-            >
-              Buat PDF
-            </Button>
+            <div className="flex flex-col gap-2">
+              {PAGE_FORMATS.map(({ format, label, icon: Icon }) => {
+                const active = busy && job.format === format;
+                return (
+                  <Button
+                    key={format}
+                    ref={format === "pdf" ? create : undefined}
+                    variant={format === "pdf" ? "primary" : "outline"}
+                    data-testid={`export-${format}`}
+                    className={cn(
+                      "w-full justify-start h-(--control-h-lg) md:not-any-pointer-coarse:h-(--control-h) aria-disabled:pointer-events-none",
+                      busy && !active && "opacity-50",
+                    )}
+                    // Berjalan: tetap fokusabel (tekan diabaikan) — polling tidak pernah membuang fokus.
+                    aria-disabled={busy || undefined}
+                    leadingIcon={active ? SPINNER : <Icon aria-hidden />}
+                    onClick={() => run(format)}
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
+            </div>
             <ExportStatus
               job={job}
               pollError={pollError}

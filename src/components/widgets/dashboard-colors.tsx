@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useMemo } from "react";
 import {
+  dashboardTone,
   statusColorsOf,
   type DashboardColors,
   type Palette,
@@ -23,9 +24,13 @@ export function useDashboardColors(): WidgetColors | undefined {
   return statusColorsOf(useContext(DashboardColorsContext)?.colors);
 }
 
-/** Penilaian warna bawaan dashboard (v1.11.0); undefined = tidak diatur/di luar dashboard. */
+/**
+ * Penilaian warna bawaan dashboard (v1.11.0); sejak T-se9h tidak diatur = "up" (level otomatis).
+ * undefined = dashboard memilih tanpa warna, atau di luar dashboard.
+ */
 export function useDashboardTone(): Tone | undefined {
-  return useContext(DashboardColorsContext)?.colors?.tone;
+  const ctx = useContext(DashboardColorsContext);
+  return ctx ? dashboardTone(ctx.colors) : undefined;
 }
 
 /** Tema grafik dashboard; undefined = palet aplikasi. */

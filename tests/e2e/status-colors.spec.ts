@@ -103,9 +103,8 @@ test.describe("warna status (T-f3tf)", () => {
     const table = card(owner).getByTestId("widget-pivot");
     await expect(table.locator("tbody tr[data-kind=leaf]")).toHaveCount(6);
 
-    // Tanpa penilaian: tidak ada warna dan tidak ada legenda.
-    await expect(table.locator("[data-status]")).toHaveCount(0);
-    await expect(card(owner).getByTestId("status-legend")).toHaveCount(0);
+    // Tanpa penilaian sendiri: ikut bawaan dashboard "makin tinggi makin baik" (T-se9h) — level otomatis.
+    await expect(table.locator("[data-status]")).toHaveCount(6);
 
     await pick(owner, panel, "Penilaian warna", "Makin tinggi makin baik (mis. tepat waktu)");
     await saved(panel);
