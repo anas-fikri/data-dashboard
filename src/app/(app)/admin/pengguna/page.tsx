@@ -55,6 +55,8 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
       />
       <OnlineUsers />
       <div className="flex flex-col gap-4">
+        {/* Urutan judul (review T-h807 #6): daftar pengguna punya judul sendiri setelah "Sedang online". */}
+        <h2 className="sr-only">Daftar pengguna</h2>
         <UsersSearch q={q} status={status} />
         {/* key: ganti saringan/halaman lewat navigasi klien tetap menampilkan kerangka muat. */}
         <Suspense key={`${q}|${status}|${page}`} fallback={<UsersSkeleton />}>

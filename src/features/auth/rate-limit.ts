@@ -50,10 +50,12 @@ export const RULES = {
    */
   filterValues: { name: "filter-values:user", limit: 300, windowSec: 60 },
   /**
-   * Heartbeat kehadiran per user (T-h807): ±1/menit per tab terlihat + saat pindah halaman; 10 tab aktif
-   * yang sering berpindah halaman masih di bawah batas. Melewati batas → heartbeat diabaikan diam-diam.
+   * Heartbeat kehadiran per user (T-h807): ±1/menit per tab terlihat + paling banyak 1 per 15 dtk saat pindah
+   * halaman (≤ ±50 per tab per 10 menit). Batas 300 = ±6 tab yang terus berpindah, atau ±30 tab diam (mis.
+   * satu akun TV di banyak layar). Melewati batas → heartbeat diabaikan diam-diam (kehadiran tetap tercatat
+   * dari heartbeat sebelumnya dalam jendela online).
    */
-  presence: { name: "presence:user", limit: 120, windowSec: 10 * 60 },
+  presence: { name: "presence:user", limit: 300, windowSec: 10 * 60 },
   /** Perubahan admin pengguna (peran, status, alih kepemilikan) per admin (T-019). */
   admin: { name: "admin:user", limit: 60, windowSec: 60 },
   /** Aktifkan (rollback) / buang versi dataset per pemilik (T-013); tiap aktivasi menulis ulang widget. */

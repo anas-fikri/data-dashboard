@@ -14,7 +14,7 @@ const RETENTION_SEC = RETENTION_MS / 1000;
 const ZKEY = "presence:z";
 const pathKey = (userId: string) => `presence:p:${userId}`;
 
-export type PresenceRedis = Pick<Redis, "multi" | "zrangebyscore" | "mget">;
+export type PresenceRedis = Pick<Redis, "multi" | "zrangebyscore" | "zremrangebyscore" | "mget">;
 
 /**
  * Path halaman yang boleh disimpan: hanya pathname aplikasi (tanpa query/hash — ?f= bisa berisi nilai
@@ -53,12 +53,18 @@ export interface PresenceEntry {
   path: string | null;
 }
 
-/** User yang aktif dalam jendela online, terbaru dulu. */
+/**
+ * User yang aktif dalam jendela online, terbaru dulu. Anggota yang lebih tua dari RETENTION_MS juga dibuang
+ * di sini (bukan hanya saat ada heartbeat), sehingga tidak ada catatan yang bertahan lebih dari ±24 jam
+ * selama admin masih melihat daftar (review T-h807 #1). `paths: false` = tanpa membaca halaman (hitungan).
+ */
 export async function readOnline(
   r: PresenceRedis,
   now = Date.now(),
   windowMs = ONLINE_WINDOW_MS,
+  opts: { paths?: boolean } = {},
 ): Promise<PresenceEntry[]> {
+  await r.zremrangebyscore(ZKEY, "-inf", now - RETENTION_MS);
   const raw = await r.zrangebyscore(ZKEY, now - windowMs, "+inf", "WITHSCORES");
   const pairs: { userId: string; lastSeen: number }[] = [];
   for (let i = 0; i + 1 < raw.length; i += 2) {
@@ -66,6 +72,7 @@ export async function readOnline(
   }
   pairs.sort((a, b) => b.lastSeen - a.lastSeen);
   if (!pairs.length) return [];
+  if (opts.paths === false) return pairs.map((p) => ({ ...p, path: null }));
   const paths = await r.mget(...pairs.map((p) => pathKey(p.userId)));
   return pairs.map((p, i) => ({ ...p, path: cleanPath(paths[i]) }));
 }

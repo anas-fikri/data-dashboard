@@ -63,7 +63,13 @@ test("AC1/AC5: tab user terlihat mengirim heartbeat; admin melihatnya di Sedang 
   const admin = await adminCtx.newPage();
   await apiLogin(admin, ADMIN);
   await admin.setViewportSize({ width: 1280, height: 900 });
+  // Heartbeat admin sendiri dulu, baru daftar dimuat ulang (daftar diperbarui tiap 30 dtk).
+  const own = admin.waitForResponse(
+    (r) => r.url().endsWith("/api/presence") && r.request().method() === "POST",
+  );
   await admin.goto("/admin/pengguna");
+  expect((await own).status()).toBe(204);
+  await admin.reload();
   const section = admin.getByTestId("online-users");
   await expect(section.getByRole("heading", { name: /Sedang online/ })).toBeVisible();
   const row = section.getByTestId("online-user").filter({ hasText: USER });

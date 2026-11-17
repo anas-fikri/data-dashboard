@@ -44,11 +44,12 @@ const prodDeps: PresenceDeps = {
 async function activeEntries(
   deps: PresenceDeps,
   now: number,
+  paths = true,
 ): Promise<{
   entries: PresenceEntry[];
   users: Map<string, { name: string | null; email: string }>;
 }> {
-  const entries = await readOnline(await deps.redis(), now);
+  const entries = await readOnline(await deps.redis(), now, undefined, { paths });
   const users = new Map(
     entries.length
       ? (await deps.activeUsers(entries.map((e) => e.userId))).map((u) => [u.id, u] as const)
@@ -62,7 +63,25 @@ export async function countOnline(
   deps: PresenceDeps = prodDeps,
   now = Date.now(),
 ): Promise<number> {
-  return (await activeEntries(deps, now)).entries.length;
+  return (await activeEntries(deps, now, false)).entries.length;
+}
+
+/**
+ * Bagian /api/metrics untuk kartu Server (T-h807): jumlah online HANYA untuk admin; user lain {} (tanpa
+ * kunci `online` sama sekali). Gagal dibaca → {} (kartu tetap jalan) dan galat diteruskan ke `onError`.
+ */
+export async function onlineForMetrics(
+  isAdmin: boolean,
+  count: () => Promise<number> = () => countOnline(),
+  onError: (e: unknown) => void = () => undefined,
+): Promise<{ online?: number }> {
+  if (!isAdmin) return {};
+  try {
+    return { online: await count() };
+  } catch (e) {
+    onError(e);
+    return {};
+  }
 }
 
 /** Daftar user online, terbaru dulu (Admin › Pengguna). */

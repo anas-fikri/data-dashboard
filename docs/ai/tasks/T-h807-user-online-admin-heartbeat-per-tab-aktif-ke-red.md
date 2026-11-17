@@ -1,16 +1,50 @@
 ---
 id: T-h807
 title: 'User online (admin): heartbeat per tab aktif ke Redis, jumlah online di kartu Server (admin) + daftar di Admin › Penggu…'
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 created: "2026-11-17T12:46:12Z"
-updated: "2026-11-17T13:19:30Z"
+updated: "2026-11-17T13:27:13Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 6e84221c735fb650970fb63d86441851cf3d1900
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-17T13:27:13Z"
+      findings: 7
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 217983
+    summary: |-
+      …vice":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1794921797162,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
+      {"level":40,"time":1794921800279,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794921800281,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794921800281,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+
+       Test Files  259 passed | 1 skipped (260)
+            Tests  3428 passed | 10 skipped (3438)
+         Start at  13:21:01
+         Duration  145.85s (tests 80%, import 16%, transform 3%)
+
+          Isolate  260 workers spawned · ~113ms startup each (spawn + environment, per file)
+                   at least ~9.66s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@1.23.1 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-11-17T13:23:28Z"
+    tree: 76c7f141f8a9c0f4517254db5b79b4ff8bc4df254ef034062f2de8a78513e9b7
 ---
 
 ## Objective

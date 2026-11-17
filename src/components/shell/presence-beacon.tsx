@@ -5,59 +5,66 @@ import { useEffect, useRef } from "react";
 
 /*
  * Heartbeat kehadiran (T-h807): selama tab aplikasi terlihat, kirim POST /api/presence { path } tiap
- * HEARTBEAT_MS, segera saat tab kembali terlihat, dan saat pindah halaman (paling cepat MIN_GAP_MS sekali).
- * Tab tersembunyi tidak mengirim apa pun. 401 (sesi habis/logout) → berhenti. Hanya pathname yang dikirim
- * (server tetap menyaring). Tidak merender apa pun.
+ * HEARTBEAT_MS, segera saat tab kembali terlihat, dan saat pindah halaman. Paling cepat sekali tiap
+ * MIN_GAP_MS: pindah halaman di dalam jeda itu dikirim di akhir jeda (halaman terakhir tetap tercatat, review
+ * #3). Tab tersembunyi tidak mengirim apa pun. Jawaban 401 (sesi habis) tidak menghentikan beacon untuk
+ * selamanya — heartbeat berikutnya mencoba lagi (login ulang di tab lain berlaku, review #2); biayanya satu
+ * permintaan per menit. Hanya pathname yang dikirim (server tetap menyaring). Tidak merender apa pun.
  */
 export const HEARTBEAT_MS = 60_000;
 const MIN_GAP_MS = 15_000;
 
 export function PresenceBeacon() {
   const pathname = usePathname();
-  const last = useRef(0);
-  const stopped = useRef(false);
   const pathRef = useRef(pathname);
+  const sendRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    const send = (force = false) => {
-      if (stopped.current || document.visibilityState !== "visible") return;
-      const now = Date.now();
-      if (!force && now - last.current < MIN_GAP_MS) return;
-      last.current = now;
+    let last = 0;
+    let pending: number | null = null;
+    const post = () => {
+      last = Date.now();
       void fetch("/api/presence", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ path: pathRef.current }),
-      })
-        .then((r) => {
-          if (r.status === 401) stopped.current = true;
-        })
-        .catch(() => undefined);
+      }).catch(() => undefined);
     };
+    /** Kirim sekarang, atau di akhir jeda bila heartbeat terakhir terlalu dekat. */
+    const send = () => {
+      if (document.visibilityState !== "visible") return;
+      const wait = last + MIN_GAP_MS - Date.now();
+      if (wait <= 0) {
+        if (pending !== null) window.clearTimeout(pending);
+        pending = null;
+        post();
+      } else if (pending === null) {
+        pending = window.setTimeout(() => {
+          pending = null;
+          if (document.visibilityState === "visible") post();
+        }, wait);
+      }
+    };
+    sendRef.current = send;
     const onVisible = () => {
       if (document.visibilityState === "visible") send();
     };
-    send(true);
-    const timer = window.setInterval(() => send(true), HEARTBEAT_MS);
+    send();
+    const timer = window.setInterval(send, HEARTBEAT_MS);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
+      sendRef.current = null;
       window.clearInterval(timer);
+      if (pending !== null) window.clearTimeout(pending);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
-  // Pindah halaman: path baru dicatat (dibatasi MIN_GAP_MS agar navigasi cepat tidak membanjiri server).
+  // Pindah halaman: path baru dicatat (sekarang, atau di akhir jeda MIN_GAP_MS).
   useEffect(() => {
     if (pathRef.current === pathname) return;
     pathRef.current = pathname;
-    if (stopped.current || document.visibilityState !== "visible") return;
-    if (Date.now() - last.current < MIN_GAP_MS) return;
-    last.current = Date.now();
-    void fetch("/api/presence", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ path: pathname }),
-    }).catch(() => undefined);
+    sendRef.current?.();
   }, [pathname]);
 
   return null;

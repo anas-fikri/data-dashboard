@@ -1509,3 +1509,18 @@ bash deploy/server-release.sh 1.23.1
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.23.0 aman.
+
+## 47. Rilis v1.24.0 (tanpa migrasi)
+
+User online untuk admin (T-h807): tab aplikasi yang terlihat mengirim heartbeat ±60 dtk ke `POST /api/presence`; Redis
+menyimpan `presence:z` (ZSET waktu terakhir aktif) dan `presence:p:<userId>` (halaman terakhir, TTL 24 jam). Admin melihat
+**Sedang online** di Admin › Pengguna dan jumlahnya di kartu Server. Tanpa migrasi, tanpa container/variabel baru.
+Seed panduan `admin-email-dan-backup`.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.24.0
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Bila v1.23.x belum terpasang: pasang dengan
+`--full` (migrasi v1.23.0 ikut). Rollback ke v1.23.x aman; kunci `presence:*` kedaluwarsa sendiri.

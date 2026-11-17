@@ -10,7 +10,7 @@ import {
 } from "@/features/presence/store";
 
 vi.mock("server-only", () => ({}));
-const { countOnline, listOnline } = await import("@/features/presence/service");
+const { countOnline, listOnline, onlineForMetrics } = await import("@/features/presence/service");
 
 /* T-h807: kehadiran user (admin) — penyaring path, store Redis, label halaman, daftar akun aktif. */
 
@@ -50,6 +50,10 @@ function fakeRedis() {
         },
       };
       return m;
+    },
+    async zremrangebyscore(_k: string, _min: string, max: number) {
+      for (const [k, v] of z) if (v <= max) z.delete(k);
+      return 0;
     },
     async zrangebyscore(_k: string, min: number) {
       return [...z].filter(([, v]) => v >= min).flatMap(([k, v]) => [k, String(v)]);
@@ -91,6 +95,38 @@ describe("touchPresence / readOnline", () => {
       { userId: "u3", lastSeen: now, path: null },
       { userId: "u2", lastSeen: now - 60_000, path: "/datasets" },
     ]);
+  });
+});
+
+describe("retensi saat membaca (review T-h807 #1)", () => {
+  it("anggota > 24 jam dibuang juga saat daftar dibaca, walau ada heartbeat lain sesudahnya", async () => {
+    const { r, z } = fakeRedis();
+    const t0 = 10 * RETENTION_MS;
+    await touchPresence(r, "jumat", "/", t0);
+    await touchPresence(r, "sabtu", "/", t0 + RETENTION_MS - 60_000);
+    await readOnline(r, t0 + RETENTION_MS + 1);
+    expect(z.has("jumat")).toBe(false);
+    expect(z.has("sabtu")).toBe(true);
+    // Hitungan tidak membaca halaman.
+    const counted = await readOnline(r, t0 + RETENTION_MS, ONLINE_WINDOW_MS, { paths: false });
+    expect(counted).toEqual([
+      { userId: "sabtu", lastSeen: t0 + RETENTION_MS - 60_000, path: null },
+    ]);
+  });
+});
+
+describe("onlineForMetrics (/api/metrics)", () => {
+  it("non-admin tidak pernah menerima kunci online; admin menerima angka; gagal → tanpa kunci", async () => {
+    const count = vi.fn(async () => 4);
+    expect(await onlineForMetrics(false, count)).toEqual({});
+    expect(count).not.toHaveBeenCalled();
+    expect(await onlineForMetrics(true, count)).toEqual({ online: 4 });
+    const onError = vi.fn();
+    const failing = async () => {
+      throw new Error("redis mati");
+    };
+    expect(await onlineForMetrics(true, failing, onError)).toEqual({});
+    expect(onError).toHaveBeenCalled();
   });
 });
 

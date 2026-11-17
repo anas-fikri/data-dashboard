@@ -1,7 +1,7 @@
 "use client";
 
 import { IconUsers } from "@tabler/icons-react";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { OnlineUser } from "@/features/presence/service";
 import { usePolling } from "@/lib/hooks/use-polling";
 import { EmailText } from "./email-text";
@@ -26,17 +26,26 @@ export function agoText(iso: string, now: number): string {
 export function OnlineUsers() {
   const headingId = useId();
   const root = useRef<HTMLElement>(null);
+  // 401/403/404 (sesi habis, akses admin dicabut) menghentikan polling: katakan, jangan diam (review #4).
+  const [stopped, setStopped] = useState(false);
   const { data, error } = usePolling<Response>({
     url: "/api/presence",
     intervalMs: 30_000,
     initial: null,
     done: () => false,
+    onStop: () => setStopped(true),
     immediate: true,
   });
   // "N menit lalu" dihitung terhadap jam server saat daftar dibaca (tanpa selisih jam klien).
   const now = data ? Date.parse(data.now) : 0;
+  // Dibuka lewat #online — juga dari tautan kartu Server saat sudah di halaman ini (hashchange, review #5).
   useEffect(() => {
-    if (window.location.hash === "#online") root.current?.focus({ preventScroll: true });
+    const focus = () => {
+      if (window.location.hash === "#online") root.current?.focus({ preventScroll: true });
+    };
+    focus();
+    window.addEventListener("hashchange", focus);
+    return () => window.removeEventListener("hashchange", focus);
   }, []);
 
   const users = data?.users ?? null;
@@ -64,10 +73,17 @@ export function OnlineUsers() {
           otomatis.
         </p>
       </div>
-      {users === null ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          {error ? "Daftar user online gagal dimuat. Mencoba lagi…" : "Memuat…"}
+      {stopped ? (
+        <p className="text-sm" role="status" data-testid="online-stopped">
+          Daftar tidak lagi diperbarui — sesi berakhir atau akses admin dicabut. Muat ulang halaman.
         </p>
+      ) : null}
+      {users === null ? (
+        stopped ? null : (
+          <p className="text-sm text-muted-foreground" role="status">
+            {error ? "Daftar user online gagal dimuat. Mencoba lagi…" : "Memuat…"}
+          </p>
+        )
       ) : users.length === 0 ? (
         <p className="text-sm">Tidak ada pengguna yang sedang online.</p>
       ) : (
@@ -100,7 +116,7 @@ export function OnlineUsers() {
           ))}
         </ul>
       )}
-      {users !== null && error ? (
+      {users !== null && error && !stopped ? (
         <p className="text-xs text-muted-foreground" role="status">
           Gagal memperbarui daftar. Mencoba lagi…
         </p>
