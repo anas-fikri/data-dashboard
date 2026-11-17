@@ -6,7 +6,7 @@ profile: standard
 tags:
   - ui
 created: "2026-10-22T04:29:18Z"
-updated: "2026-11-17T14:29:02Z"
+updated: "2026-11-17T14:36:45Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -22,25 +22,29 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-17T14:29:02Z"
       findings: 1
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-11-17T14:36:45Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 207233
+    duration_ms: 201198
     summary: |-
       …vice":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1794925455990,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
-      {"level":40,"time":1794925458178,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
-      {"level":40,"time":1794925458183,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
-      {"level":40,"time":1794925458185,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794925945821,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
+      {"level":40,"time":1794925948783,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794925948786,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
+      {"level":40,"time":1794925948789,"service":"data-dashboard","userId":"slow","err":"timeout","msg":"storage per akun gagal dihitung"}
 
        Test Files  259 passed | 1 skipped (260)
             Tests  3430 passed | 10 skipped (3440)
-         Start at  14:22:05
-         Duration  141.42s (tests 81%, import 16%, transform 3%)
+         Start at  14:30:22
+         Duration  136.21s (tests 81%, import 16%, transform 3%)
 
-          Isolate  260 workers spawned · ~107ms startup each (spawn + environment, per file)
-                   at least ~9.16s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  260 workers spawned · ~105ms startup each (spawn + environment, per file)
+                   at least ~8.96s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.24.0 audit
@@ -48,12 +52,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-11-17T14:24:28Z"
-    tree: e61b43cc9d78a9f9e1380c4193f2288de5204cb2242880dfcd82f51ef3750f0b
+    at: "2026-11-17T14:32:39Z"
+    tree: 93bd308a34f9128a2f76e39ebd4cb12e6197d21a8aa6466d7655b5aef29f1d25
   audit:
-    at: "2026-11-17T14:24:29Z"
+    at: "2026-11-17T14:32:40Z"
     passed: true
-    tree: e61b43cc9d78a9f9e1380c4193f2288de5204cb2242880dfcd82f51ef3750f0b
+    tree: 93bd308a34f9128a2f76e39ebd4cb12e6197d21a8aa6466d7655b5aef29f1d25
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -61,7 +65,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
-          End status: 562 dirs visited, 6657 inodes visited, 1 Extract calls, 146.811489ms elapsed, 146.811636ms wall time
+          End status: 562 dirs visited, 6675 inodes visited, 1 Extract calls, 110.024651ms elapsed, 110.024883ms wall time
           Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
           No issues found
       - name: npm audit (prod high, dev critical)
