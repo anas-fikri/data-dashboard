@@ -32,6 +32,8 @@ export interface MetricsSummary {
     /** Proses latar per jenis (v1.21); tidak ada = sampel versi lama. */
     jobs?: QueueStatus["jobs"];
   } | null;
+  /** Jumlah user online (T-h807) — HANYA untuk admin; tidak ada untuk user lain atau bila gagal dibaca. */
+  online?: number;
 }
 
 const point = (p: HostPoint): SummaryPoint => ({

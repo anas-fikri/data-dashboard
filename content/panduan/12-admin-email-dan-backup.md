@@ -71,3 +71,13 @@ Buka **Admin → Sumber daya server** (atau **Detail** di kartu **Server** di ba
 - **Pemakaian per akun (perkiraan)**: akun yang sedang memakai server, terberat di atas — **Waktu query 15 menit** (lama server mengolah widget, pivot, dan Lihat data akun itu), **Query berjalan**, **Pekerjaan berjalan** (unggahan, olah ulang, ekspor/PDF), dan **Storage** terpakai dibanding kuota. Ini perkiraan: CPU/RAM persis per akun tidak bisa diukur karena semua akun dilayani proses yang sama. Pakai untuk menemukan, misalnya, dashboard berat yang dibuka di banyak tab atau ekspor besar yang sedang berjalan.
 
 Angka host mencakup seluruh server, termasuk aplikasi lain di server yang sama; tabel layanan hanya aplikasi ini. Riwayat disimpan 24 jam. Bila halaman menulis **Monitor sumber daya belum dipasang**, pengelola server perlu menyalakannya sekali (runbook deploy §29); sebelum itu kartu **Server** tidak tampil bagi siapa pun.
+
+## Siapa yang sedang online
+
+Buka **Admin → Pengguna**. Bagian **Sedang online** di atas daftar pengguna menampilkan pengguna yang membuka aplikasi di tab yang terlihat dalam **5 menit terakhir**, terbaru di atas: nama, email, **halaman terakhir** (mis. _Dashboard Penjualan_, _Daftar dataset_, _Admin_), dan kapan terakhir aktif (WIB). Daftar diperbarui otomatis tiap 30 detik. Admin juga melihat jumlahnya di kartu **Server** (mis. _3 user online_ — klik untuk membuka daftar ini).
+
+Yang perlu diketahui:
+
+- Hanya admin yang melihat bagian ini; pengguna lain tidak bisa melihat siapa yang online.
+- Tab yang disembunyikan (jendela lain di depan, tab lain aktif) tidak dihitung, jadi orang yang meninggalkan tab terbuka di belakang tidak tampak online. Akun nonaktif tidak pernah dihitung.
+- Yang dicatat hanya halaman, bukan isi filter atau data yang dibuka. Catatan kehadiran terhapus otomatis paling lama setelah 24 jam — tidak ada riwayat jangka panjang.

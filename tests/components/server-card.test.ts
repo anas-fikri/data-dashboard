@@ -139,15 +139,32 @@ describe("linePath", () => {
 });
 
 describe("ServerCardView", () => {
-  const render = (data: MetricsSummary, opts: { collapsed?: boolean; error?: boolean } = {}) =>
+  const render = (
+    data: MetricsSummary,
+    opts: { collapsed?: boolean; error?: boolean; isAdmin?: boolean } = {},
+  ) =>
     renderToStaticMarkup(
       createElement(ServerCardView, {
         data,
         error: opts.error ?? false,
         collapsed: opts.collapsed,
-        isAdmin: false,
+        isAdmin: opts.isAdmin ?? false,
       }),
     );
+
+  it("T-h807: admin melihat jumlah user online (tautan ke Admin › Pengguna); non-admin tidak", () => {
+    const data = { ...summaryOf(view(), true), online: 3 };
+    const admin = render(data, { isAdmin: true });
+    expect(admin).toContain("3 user online");
+    expect(admin).toContain('href="/admin/pengguna#online"');
+    expect(render(data)).not.toContain("user online");
+    expect(render({ ...data, online: 0 }, { isAdmin: true })).toContain("Tidak ada user online");
+    const collapsed = render(data, { isAdmin: true, collapsed: true });
+    expect(collapsed).toContain("3 user online. Lebarkan sidebar untuk detail");
+    expect(collapsed).toContain('data-testid="server-collapsed-online"');
+    // Data tanpa angka (non-admin dari server / gagal dibaca) → tidak ada baris online.
+    expect(render(summaryOf(view(), true), { isAdmin: true })).not.toContain("user online");
+  });
 
   it("angka + status + antrean; nilai tinggi ditandai teks, bukan warna saja; tanpa tautan admin", () => {
     const html = render(summaryOf(view({ cpu: 0.9 }), true));

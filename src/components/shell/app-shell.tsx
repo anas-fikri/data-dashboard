@@ -14,6 +14,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePersistedBoolean } from "@/lib/hooks/use-persisted-boolean";
 import { useIsPhone } from "@/components/dashboards/use-media-query";
 import { ServerCard } from "@/components/metrics/server-card";
+import { PresenceBeacon } from "./presence-beacon";
 import { Button } from "@/components/ui/button";
 import type { SessionUser } from "@/features/auth/session";
 import { cn } from "@/lib/utils";
@@ -65,6 +66,8 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
 
   return (
     <div className="flex min-h-dvh">
+      {/* Kehadiran (T-h807): hanya user login; tidak merender apa pun. */}
+      {user ? <PresenceBeacon /> : null}
       <a
         href="#konten"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2"

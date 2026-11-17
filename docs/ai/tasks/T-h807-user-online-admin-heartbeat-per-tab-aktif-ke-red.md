@@ -1,12 +1,16 @@
 ---
 id: T-h807
 title: 'User online (admin): heartbeat per tab aktif ke Redis, jumlah online di kartu Server (admin) + daftar di Admin › Penggu…'
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 created: "2026-11-17T12:46:12Z"
-updated: "2026-11-17T12:46:29Z"
+updated: "2026-11-17T13:07:04Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/cool-babbage-t5yojt
+base: 6e84221c735fb650970fb63d86441851cf3d1900
 ---
 
 ## Objective
