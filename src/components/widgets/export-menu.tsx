@@ -1,9 +1,17 @@
 "use client";
 
-import { IconDownload, IconFileTypeCsv, IconFileTypeXls, IconLoader2 } from "@tabler/icons-react";
+import {
+  IconDownload,
+  IconFileTypeCsv,
+  IconFileTypeXls,
+  IconLoader2,
+  IconPhoto,
+} from "@tabler/icons-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useOptionalDashboardApplied } from "@/components/dashboards/filters/filter-context";
+import { encodeFilterParam } from "@/components/dashboards/filters/filter-model";
 import type { ExportFileFormat } from "@/features/exports/types";
 import { cn } from "@/lib/utils";
 import {
@@ -28,8 +36,9 @@ import type { WidgetRequest } from "./widget-query";
  * (className dari widget-card-head.tsx). Status ekspor hidup di export-store.ts per user + widget: kartu
  * yang dipasang ulang (rotasi tumpukan ↔ grid, mode lihat ↔ edit) menampilkan ekspor yang sama.
  */
-const FORMAT_ICON = { csv: IconFileTypeCsv, xlsx: IconFileTypeXls } as const;
-const FORMATS = ["csv", "xlsx"] as const;
+const FORMAT_ICON = { png: IconPhoto, csv: IconFileTypeCsv, xlsx: IconFileTypeXls } as const;
+// Gambar dulu (T-7c8v): yang diunduh adalah tampilan widget; data (CSV/Excel) pilihan berikutnya.
+const FORMATS = ["png", "csv", "xlsx"] as const;
 
 /**
  * Gulir kontrol terfokus ke area terlihat hanya untuk fokus keyboard (:focus-visible): fokus dari tekan
@@ -61,10 +70,21 @@ export function ExportMenu({ widgetId, title, table, request, className }: Props
   const content = useRef<HTMLDivElement>(null);
   const buttons = useRef<Partial<Record<ExportFileFormat, HTMLButtonElement | null>>>({});
 
+  const dash = useOptionalDashboardApplied();
+  const formats = dash ? FORMATS : FORMATS.filter((f) => f !== "png");
+
   function run(format: ExportFileFormat) {
+    if (busy) return;
+    if (format === "png") {
+      // Gambar widget dirender server (renderer) dengan filter yang sedang diterapkan di kanvas.
+      if (!dash) return;
+      const f = encodeFilterParam(dash.applied);
+      void start({ dashboardId: dash.dashboardId, format: "png", widgetId, ...(f ? { f } : {}) });
+      return;
+    }
     const body = request.current; // null hanya sebelum isi kartu pertama kali dirender
-    // PDF hanya untuk dashboard utuh (kepala halaman); store kartu tidak pernah memegangnya.
-    if (body && !busy && format !== "pdf") void start(exportBody(body, format));
+    // PDF/HTML hanya untuk dashboard utuh (kepala halaman); store kartu tidak pernah memegangnya.
+    if (body && (format === "csv" || format === "xlsx")) void start(exportBody(body, format));
   }
 
   // Elemen terfokus hilang karena status berubah → fokus ke "Ekspor lagi" atau tombol format.
@@ -100,7 +120,7 @@ export function ExportMenu({ widgetId, title, table, request, className }: Props
           variant="ghost"
           className={className}
           aria-label={`Ekspor ${title}`}
-          title={unseenError ? "Ekspor gagal. Buka untuk detail." : "Ekspor CSV atau Excel"}
+          title={unseenError ? "Ekspor gagal. Buka untuk detail." : "Unduh gambar atau data"}
           data-testid="widget-export"
           data-head-control
         >
@@ -137,14 +157,15 @@ export function ExportMenu({ widgetId, title, table, request, className }: Props
             Ekspor {title}
           </p>
           <p className="text-xs text-muted-foreground">
+            Gambar = tampilan widget sesuai filter aktif. Data:{" "}
             {table
-              ? "Semua baris yang tersaring, urut seperti di tabel."
-              : "Nilai yang tampil di widget ini, sesuai filter aktif."}{" "}
-            Angka apa adanya, tanpa Rp atau %.
+              ? "semua baris yang tersaring, urut seperti di tabel."
+              : "nilai yang tampil di widget ini."}{" "}
+            Angka data apa adanya, tanpa Rp atau %.
           </p>
         </div>
         <div className="flex flex-col gap-2">
-          {FORMATS.map((f) => {
+          {formats.map((f) => {
             const Icon = FORMAT_ICON[f];
             const active = busy && job.format === f;
             return (

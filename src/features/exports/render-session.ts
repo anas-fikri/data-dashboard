@@ -156,8 +156,28 @@ export async function loadRenderSession(
   const claims = await deps.consumeClaims(sessionId);
   if (!claims) return null;
   if (!(await deps.subjectLive(claims))) return null;
-  const d = await deps.dashboard(claims.userId, claims.dashboardId);
-  if (!d || d.id !== claims.dashboardId) return null;
+  const full = await deps.dashboard(claims.userId, claims.dashboardId);
+  if (!full || full.id !== claims.dashboardId) return null;
+  // PNG satu widget (T-7c8v): hanya widget itu, selebar halaman di baris pertama (tinggi kartunya tetap).
+  const only = claims.widgetId ? full.widgets.find((w) => w.id === claims.widgetId) : null;
+  if (claims.widgetId && !only) return null;
+  const slot = only ? full.layout.find((it) => it.i === only.id) : null;
+  const d = only
+    ? {
+        ...full,
+        widgets: [only],
+        layout: [
+          {
+            ...(slot ?? { i: only.id, h: 6 }),
+            i: only.id,
+            x: 0,
+            y: 0,
+            w: 12,
+            h: Math.max(slot?.h ?? 6, 4),
+          },
+        ],
+      }
+    : full;
   const parsed = parsePdfFilter(claims.f);
   if (!parsed) return null;
   const state = sanitizePdfFilter(parsed, d);

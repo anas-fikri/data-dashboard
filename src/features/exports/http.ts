@@ -11,6 +11,7 @@ import { exportQueue, pdfQueue, withQueueTimeout } from "@/lib/queue/connection"
 import { queueWorkerDown } from "@/lib/queue/versions";
 import { redisReady } from "@/lib/redis";
 import { presignExportGet } from "@/lib/storage/exports";
+import { RENDER_FORMATS } from "./types";
 import { rendererClient } from "./renderer-client";
 import { prismaExportRepo } from "./repo";
 import {
@@ -78,8 +79,11 @@ function pdfDeps(): PdfExportDeps {
 const failed = (r: ExportFailure) =>
   json(r, EXPORT_STATUS[r.code], r.retryAfterSec ? { "Retry-After": String(r.retryAfterSec) } : {});
 
+/** PDF/PNG/HTML lewat renderer (T-018, T-7c8v, T-yye9, T-c2bh). */
 const isPdfBody = (body: unknown) =>
-  !!body && typeof body === "object" && (body as { format?: unknown }).format === "pdf";
+  !!body &&
+  typeof body === "object" &&
+  (RENDER_FORMATS as readonly unknown[]).includes((body as { format?: unknown }).format);
 /** Body "Unduh tampilan" Lihat data (T-046): ditandai sheetId; skemanya strict (field lain → INVALID). */
 const isSheetBody = (body: unknown) =>
   !!body && typeof body === "object" && Object.hasOwn(body, "sheetId");

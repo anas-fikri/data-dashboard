@@ -6,7 +6,14 @@ import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import type { ExportFileFormat } from "@/features/exports/types";
 import { cn } from "@/lib/utils";
-import { busyLabel, doneDetail, exportBusy, type ExportJob } from "./export-model";
+import {
+  busyLabel,
+  doneDetail,
+  exportBusy,
+  isRenderFormat,
+  RENDER_NAME,
+  type ExportJob,
+} from "./export-model";
 
 /*
  * Bagian bawah menu ekspor (T-017): baris status (role=status, selalu terpasang agar perubahan
@@ -42,7 +49,7 @@ export function ExportStatus(props: Props) {
   const { job, pollError, onRetryPoll, onAgain, again = "idle", onDownloadAgain, showCode } = props;
   const busy = exportBusy(job);
   const checking = again === "checking";
-  const pdf = job.phase !== "idle" && job.format === "pdf";
+  const pdf = job.phase !== "idle" && isRenderFormat(job.format);
   return (
     <>
       <div role="status" data-testid="export-status" className="text-sm">
@@ -52,11 +59,11 @@ export function ExportStatus(props: Props) {
             <p className="text-xs text-muted-foreground">
               {pollError
                 ? "Status belum terbaca. Periksa koneksi; kami terus mencoba."
-                : `${pdf ? "Panel" : "Menu"} boleh ditutup; unduhan dimulai otomatis.`}
+                : `${showCode ? "Panel" : "Menu"} boleh ditutup; unduhan dimulai otomatis.`}
             </p>
             {job.phase === "running" && job.workerDown ? (
               <p className="mt-1 text-xs font-medium" data-testid="export-worker-down">
-                {workerDownText(pdf ? "PDF ini" : "ekspor ini")}
+                {workerDownText(pdf ? `${RENDER_NAME[job.format as "pdf"]} ini` : "ekspor ini")}
               </p>
             ) : null}
           </div>

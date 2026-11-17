@@ -38,12 +38,18 @@ export const RENDER_ERRORS = {
 
 export type RenderErrorCode = keyof typeof RENDER_ERRORS;
 
+/** Keluaran renderer: PDF (bawaan), gambar PNG (T-7c8v/T-yye9), atau satu file HTML (T-c2bh). */
+export const RENDER_FORMATS = ["pdf", "png", "html"] as const;
+export type RenderFormat = (typeof RENDER_FORMATS)[number];
+
 export type BodyCheck =
-  | { ok: true; token: string }
+  | { ok: true; token: string; format: RenderFormat }
   | { ok: false; code: "BAD_REQUEST" | "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE" };
 
-/** Persis {token}; kunci lain (mis. url) → 400 (AC5: renderer tidak pernah menerima URL). */
-const bodySchema = z.object({ token: z.string().regex(TOKEN_PATTERN) }).strict();
+/** Persis {token, format?}; kunci lain (mis. url) → 400 (AC5: renderer tidak pernah menerima URL). */
+const bodySchema = z
+  .object({ token: z.string().regex(TOKEN_PATTERN), format: z.enum(RENDER_FORMATS).optional() })
+  .strict();
 
 /** Media type application/json (parameter seperti charset diabaikan). */
 export function isJsonContentType(header: string | undefined): boolean {
@@ -62,7 +68,7 @@ export function validateBody(contentType: string | undefined, raw: Buffer): Body
   }
   const parsed = bodySchema.safeParse(json);
   return parsed.success
-    ? { ok: true, token: parsed.data.token }
+    ? { ok: true, token: parsed.data.token, format: parsed.data.format ?? "pdf" }
     : { ok: false, code: "BAD_REQUEST" };
 }
 

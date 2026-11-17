@@ -143,6 +143,7 @@ describe("runPdfJob", () => {
       },
     ]);
     expect(t.renderer.render).toHaveBeenCalledWith("tok1".padEnd(43, "x"), {
+      format: "pdf",
       timeoutMs: 60_000,
       maxBytes: 1024,
     });

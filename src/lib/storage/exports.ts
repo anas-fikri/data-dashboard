@@ -15,10 +15,10 @@ import { bucket, s3Internal, s3Public } from "@/lib/storage/s3";
  */
 
 /** CSV/XLSX (T-017) dan PDF dashboard (T-018). */
-export const EXPORT_KEY = /^exports\/[a-z0-9]{20,32}\/[a-z0-9]{20,32}\.(csv|xlsx|pdf)$/;
+export const EXPORT_KEY = /^exports\/[a-z0-9]{20,32}\/[a-z0-9]{20,32}\.(csv|xlsx|pdf|png|html)$/;
 export const EXPORT_PREFIX = "exports/";
 
-export type ExportExt = "csv" | "xlsx" | "pdf";
+export type ExportExt = "csv" | "xlsx" | "pdf" | "png" | "html";
 
 export function exportKey(userId: string, exportId: string, ext: ExportExt): string {
   const key = `${EXPORT_PREFIX}${userId}/${exportId}.${ext}`;

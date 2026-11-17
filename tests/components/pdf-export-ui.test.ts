@@ -193,7 +193,14 @@ describe("pemetaan keadaan PDF", () => {
       { type: "start", format: "pdf" },
       { type: "rejected", status: 503, code: "RENDERER_UNAVAILABLE" },
     ]);
-    expect(exportAnnouncement(failed, "")).toBe("Ekspor PDF gagal. Buka Ekspor PDF untuk detail.");
+    expect(exportAnnouncement(failed, "")).toBe("PDF gagal dibuat. Buka Unduh dashboard untuk detail.");
+    // PNG/HTML dashboard (T-yye9/T-c2bh): nama format sendiri; PNG widget (berjudul) memakai teks widget.
+    const png = run([{ type: "start", format: "png" }]);
+    expect(exportAnnouncement(png, "")).toBe("Menyiapkan gambar…");
+    expect(exportAnnouncement(png, "Omzet")).toBe("Menyiapkan ekspor Omzet…");
+    expect(exportError("EXPORT_FAILED", undefined, "html").message).toBe(
+      "Halaman HTML gagal dibuat. Coba lagi beberapa saat lagi.",
+    );
   });
 });
 
@@ -204,11 +211,11 @@ describe("tombol kepala halaman", () => {
     renderToStaticMarkup(createElement(() => ExportUserProvider({ userId, children })));
   const button = () => page("u1", createElement(DashboardPdfExport, { dashboardId: D }));
 
-  it("diam: 'Ekspor PDF' dengan ikon PDF, panel tertutup, tanpa pengumuman", () => {
+  it("diam: 'Unduh dashboard' dengan ikon unduh, panel tertutup, tanpa pengumuman", () => {
     const out = button();
     expect(out).toContain('data-testid="dashboard-pdf-export"');
-    expect(out).toContain("Ekspor PDF");
-    expect(out).toContain("tabler-icon-file-type-pdf");
+    expect(out).toContain("Unduh dashboard");
+    expect(out).toContain("tabler-icon-download");
     expect(out).toContain('aria-haspopup="dialog"');
     expect(out).not.toContain("animate-spin");
   });
@@ -221,7 +228,7 @@ describe("tombol kepala halaman", () => {
     dispatchExport(key, { type: "rejected", status: 503, code: "RENDERER_UNAVAILABLE" });
     const out = button();
     expect(out).not.toContain("animate-spin");
-    expect(out).not.toContain("Ekspor PDF gagal");
+    expect(out).not.toContain("PDF gagal");
   });
 });
 

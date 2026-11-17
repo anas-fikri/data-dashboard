@@ -623,7 +623,7 @@ test.describe("ekspor widget", () => {
     expect(xml).toMatch(/<c r="C2"[^>]*><v>-5<\/v><\/c>/);
   });
 
-  test("UI: menu ekspor dengan keyboard — Enter membuka dan fokus ke CSV, Escape menutup dan fokus kembali ke tombol", async () => {
+  test("UI: menu ekspor dengan keyboard — Enter membuka dan fokus ke Gambar (PNG), Escape menutup dan fokus kembali ke tombol", async () => {
     await a.goto(d1Path());
     const trigger = card(a, tableId).getByTestId("widget-export");
     await expect(trigger).toHaveAccessibleName(`Ekspor ${TABLE}`);
@@ -632,6 +632,9 @@ test.describe("ekspor widget", () => {
     await a.keyboard.press("Enter");
     const menu = a.getByTestId("export-menu");
     await expect(menu).toBeVisible();
+    // Gambar dulu (T-7c8v), lalu data.
+    await expect(menu.getByTestId("export-png")).toBeFocused();
+    await a.keyboard.press("Tab");
     await expect(menu.getByTestId("export-csv")).toBeFocused();
     await a.keyboard.press("Tab");
     await expect(menu.getByTestId("export-xlsx")).toBeFocused();

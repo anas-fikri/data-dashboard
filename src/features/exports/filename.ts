@@ -57,8 +57,8 @@ export function cleanTitle(title: string, fallback = "widget"): string {
 export function exportFileName(
   title: string,
   at: Date,
-  ext: "csv" | "xlsx" | "pdf",
-  fallback = ext === "pdf" ? "dashboard" : "widget",
+  ext: "csv" | "xlsx" | "pdf" | "png" | "html",
+  fallback = ext === "pdf" || ext === "html" ? "dashboard" : "widget",
 ): string {
   return `${cleanTitle(title, fallback)}-${jakartaStamp(at)}.${ext}`;
 }

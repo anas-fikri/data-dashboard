@@ -47,7 +47,7 @@ import {
 } from "./types";
 
 export type ExportStatus = "QUEUED" | "RUNNING" | "DONE" | "FAILED";
-export type ExportFormat = "CSV" | "XLSX" | "PDF";
+export type ExportFormat = "CSV" | "XLSX" | "PDF" | "PNG" | "HTML";
 
 export interface ExportRow {
   id: string;
@@ -74,7 +74,7 @@ export type NewExport =
       dashboardId: string;
       widgetId: string;
       sheetId?: null;
-      format: Exclude<ExportFormat, "PDF">;
+      format: "CSV" | "XLSX";
       params: ExportParams;
       fileName: string;
     }
@@ -84,17 +84,17 @@ export type NewExport =
       dashboardId: null;
       widgetId: null;
       sheetId: string;
-      format: Exclude<ExportFormat, "PDF">;
+      format: "CSV" | "XLSX";
       params: SheetExportParams;
       fileName: string;
     }
-  /** PDF dashboard utuh (T-018): tanpa widget. */
+  /** Lewat renderer (T-018, T-7c8v, T-c2bh): dashboard utuh, atau PNG satu widget (widgetId). */
   | {
       userId: string;
       dashboardId: string;
-      widgetId: null;
+      widgetId: string | null;
       sheetId?: null;
-      format: "PDF";
+      format: "PDF" | "PNG" | "HTML";
       params: PdfParams;
       fileName: string;
     };
@@ -217,10 +217,12 @@ export const MIME: Record<ExportFileFormat, string> = {
   csv: "text/csv; charset=utf-8",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pdf: "application/pdf",
+  png: "image/png",
+  html: "text/html; charset=utf-8",
 };
 
 export const extOf = (f: ExportFormat): ExportFileFormat =>
-  f === "CSV" ? "csv" : f === "XLSX" ? "xlsx" : "pdf";
+  f === "CSV" ? "csv" : f === "XLSX" ? "xlsx" : f === "PNG" ? "png" : f === "HTML" ? "html" : "pdf";
 
 /** Kode kegagalan resolver widget (INVALID/NOT_READY/…_UNAVAILABLE) sebagai kode ekspor. */
 export function exportCodeOf(code: string): ExportCode {
@@ -325,11 +327,14 @@ export async function createPdfExport(
       `Permintaan ekspor tidak valid${issue?.path.length ? ` (${issue.path.join(".")})` : ""}: ${issue?.message ?? "format salah"}.`,
     );
   }
-  const { dashboardId, f } = parsed.data;
+  const { dashboardId, f, format, widgetId } = parsed.data;
   const d = await deps.dashboard(userId, dashboardId);
   if (!d) return failure("NOT_FOUND", "Dashboard tidak ditemukan.");
   if (!d.widgets.length)
     return failure("INVALID", "Dashboard ini belum punya widget untuk diekspor.");
+  // PNG satu widget (T-7c8v): widget harus milik dashboard ini (lainnya 404 yang sama).
+  const widget = widgetId ? d.widgets.find((w) => w.id === widgetId) : null;
+  if (widgetId && !widget) return failure("NOT_FOUND", "Widget tidak ditemukan.");
   const state = parsePdfFilter(f);
   // Filter rusak tidak boleh diam-diam menjadi PDF tanpa filter (nilainya berbeda dengan layar).
   if (!state) {
@@ -344,10 +349,18 @@ export async function createPdfExport(
     {
       userId,
       dashboardId: d.id,
-      widgetId: null,
-      format: "PDF",
-      params: { ...(encoded ? { f: encoded } : {}), requestedAt: now.toISOString() },
-      fileName: exportFileName(d.name, now, "pdf"),
+      widgetId: widget?.id ?? null,
+      format: format === "png" ? "PNG" : format === "html" ? "HTML" : "PDF",
+      params: {
+        ...(encoded ? { f: encoded } : {}),
+        requestedAt: now.toISOString(),
+        ...(widget ? { widgetId: widget.id } : {}),
+      },
+      fileName: exportFileName(
+        widget ? `${d.name} - ${widget.title || "Widget"}` : d.name,
+        now,
+        format,
+      ),
     },
     EXPORT_IN_FLIGHT_MAX,
     new Date(now.getTime() - IN_FLIGHT_STALE_MS),
