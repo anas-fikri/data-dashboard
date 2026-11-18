@@ -1524,3 +1524,17 @@ bash deploy/server-release.sh 1.24.0
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Bila v1.23.x belum terpasang: pasang dengan
 `--full` (migrasi v1.23.0 ikut). Rollback ke v1.23.x aman; kunci `presence:*` kedaluwarsa sendiri.
+
+## 48. Rilis v1.24.1 (tanpa migrasi)
+
+T-rq35 (Detail di drawer ponsel menutup drawer), T-v42a (petunjuk muat ulang untuk editor kolom filter), T-d1ns (judul
+otomatis widget: gagal simpan ditandai + dicoba ulang saat Selesai, widget lama tanpa judul menampilkan judul turunan,
+tanpa pesan "sudah diubah" sesaat).
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.24.1
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Bila v1.23.x belum terpasang: `--full`.
+Rollback ke v1.24.0 aman.

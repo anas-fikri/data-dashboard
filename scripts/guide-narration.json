@@ -146,27 +146,31 @@
     ],
     "viewer-filter-ekspor": [
       {
-        "caption": "Saring data lewat bilah Filter, mis. pilih cabang.",
+        "caption": "Pilih nilai di bilah filter, mis. cabang Jakarta dan Bandung.",
         "voice": "Gunakan bilah filter untuk menyaring data. Misalnya, kita pilih cabang Jakarta dan Bandung."
       },
       {
-        "caption": "Semua widget mengikuti filter yang aktif.",
+        "caption": "Semua widget langsung mengikuti filter yang aktif.",
         "voice": "Semua widget langsung mengikuti filter yang aktif."
       },
       {
-        "caption": "Ekspor data widget ke CSV atau Excel lewat ikon unduh.",
-        "voice": "Data setiap widget bisa diekspor ke CSV atau Excel lewat ikon unduh di pojok kartu."
+        "caption": "Ikon unduh di pojok kartu: Gambar (PNG) untuk tampilannya, CSV atau Excel untuk datanya.",
+        "voice": "Lewat ikon unduh di pojok kartu, widget bisa diunduh sebagai gambar P N G untuk laporan, atau datanya sebagai CSV dan Excel."
       },
       {
-        "caption": "Pilih format, mis. Excel. File disiapkan sebentar.",
+        "caption": "Kita pilih Excel, lalu tunggu sebentar selagi filenya disiapkan.",
         "voice": "Kita pilih Excel, lalu tunggu sebentar selagi filenya disiapkan."
       },
       {
-        "caption": "File siap diunduh.",
+        "caption": "Setelah selesai diproses, file siap diunduh.",
         "voice": "Setelah selesai diproses, file siap diunduh."
       },
       {
-        "caption": "Hapus semua filter untuk kembali ke seluruh data.",
+        "caption": "Unduh dashboard: PDF, Gambar (PNG), atau Halaman (HTML) — sesuai filter aktif.",
+        "voice": "Untuk seluruh dashboard, tekan Unduh dashboard. Pilih P D F, gambar P N G satu halaman, atau halaman H T M L yang bisa dibuka tanpa login. Semuanya mengikuti filter yang sedang aktif."
+      },
+      {
+        "caption": "Untuk melihat seluruh data lagi, tekan Hapus semua filter.",
         "voice": "Untuk kembali melihat seluruh data, tekan Hapus semua filter."
       }
     ],
@@ -174,6 +178,10 @@
       {
         "caption": "Admin mengelola pengguna lewat menu Admin.",
         "voice": "Sebagai admin, Anda mengelola pengguna lewat menu Admin."
+      },
+      {
+        "caption": "Sedang online: siapa yang memakai aplikasi dalam 5 menit terakhir, beserta halaman terakhirnya.",
+        "voice": "Di halaman Pengguna, bagian Sedang online menampilkan siapa saja yang sedang memakai aplikasi dalam lima menit terakhir, beserta halaman yang terakhir dibuka. Hanya admin yang bisa melihatnya."
       },
       {
         "caption": "Tambah pengguna: isi email perusahaan dan nama, lalu kirim undangan.",

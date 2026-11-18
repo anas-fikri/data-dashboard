@@ -130,6 +130,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.24.1] - 2026-11-17
+
+### Fixed
+
+- **dashboards:** judul otomatis ditolak (INVALID) tidak menahan Selesai, karakter tak terlihat dibuang, judul tertunda widget terhapus diabaikan (review T-d1ns) (b983cc0)
+- **dashboards:** judul otomatis gagal → belum tersimpan + dicoba ulang, judul turunan untuk widget tanpa judul, tanpa pesan konflik sesaat (T-d1ns); teks petunjuk netral (T-v42a) (f18da97)
+- **dashboards:** judul otomatis mempertahankan ZWJ/ZWNJ (review T-d1ns) (5a11c1b)
+- **filters:** petunjuk muat ulang untuk editor saat kolom filter baru disembunyikan (T-v42a) (9117b9d)
+- **shell:** tautan Detail kartu Server di drawer ponsel menutup drawer di halaman yang sama (T-rq35) (c303ec2)
+
 ## [1.24.0] - 2026-11-17
 
 ### Added

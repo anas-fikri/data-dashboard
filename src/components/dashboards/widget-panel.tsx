@@ -71,7 +71,7 @@ export function WidgetPanel({
   const phone = useIsPhone();
   // < 1024 px kanvas tidak menggambar satuan 12 kolom (tumpukan / tampilan 6 kolom, T-031).
   const tablet = useIsTablet();
-  const label = widget.title || "Widget tanpa judul";
+  const label = widget.title || autoTitle || "Widget tanpa judul";
 
   async function saveTitle(e?: React.FormEvent) {
     e?.preventDefault();

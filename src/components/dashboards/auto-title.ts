@@ -18,7 +18,9 @@ type WidgetLike = {
 };
 
 const clip = (s: string) => {
-  const t = normalizeName(s);
+  // Karakter kontrol/format (mis. soft hyphen dari Excel) ditolak validasi judul: dibuang — kecuali ZWJ/ZWNJ
+  // yang diizinkan validasi (emoji, aksara tertentu), sama dengan FORBIDDEN di validation.ts (review T-d1ns).
+  const t = normalizeName(s.replace(/(?![\u200C\u200D])[\p{Cc}\p{Cf}]/gu, ""));
   return t.length <= WIDGET_TITLE_MAX ? t : `${t.slice(0, WIDGET_TITLE_MAX - 1).trimEnd()}…`;
 };
 

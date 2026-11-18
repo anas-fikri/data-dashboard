@@ -24,7 +24,8 @@ export type { FilterState } from "@/components/dashboards/filters/filter-model";
 export interface FilterTarget {
   filterColumns: FilterColumnView[];
   crossFilterColumns: readonly string[];
-  widgets: { id: string; title: string; type: string; spec: unknown }[];
+  /** autoTitle: judul turunan tampilan bila `title` kosong (T-d1ns). */
+  widgets: { id: string; title: string; type: string; spec: unknown; autoTitle?: string }[];
 }
 
 /**
@@ -75,7 +76,7 @@ export function filterSummary(state: FilterState, d: FilterTarget): string {
   const cross = state.cross;
   if (cross) {
     const w = d.widgets.find((x) => x.id === cross.widgetId);
-    const title = w?.title || "Widget tanpa judul";
+    const title = w?.title || w?.autoTitle || "Widget tanpa judul";
     parts.push(`Disaring dari ${title}: ${filterText(cross.filter, undefined, grainOf(w))}`);
   }
   return parts.length ? parts.join("; ") : "Tanpa filter";

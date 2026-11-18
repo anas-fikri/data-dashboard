@@ -205,7 +205,8 @@ export async function loadRenderSession(
     widgets: d.widgets.map((w, i) => ({
       id: w.id,
       type: w.type,
-      title: w.title,
+      // Widget tanpa judul: judul turunan (T-d1ns), sama dengan kartu di layar.
+      title: w.title || w.autoTitle || "",
       spec: w.spec,
       result: results[i]!,
     })),

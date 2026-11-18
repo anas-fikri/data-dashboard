@@ -12,7 +12,7 @@
     "file": "pemilik-skema.webm",
     "title": "Memeriksa dan memperbaiki skema",
     "captions": "pemilik-skema.vtt",
-    "durationSec": 47,
+    "durationSec": 46,
     "poster": "pemilik-skema.poster.png"
   },
   {
@@ -20,7 +20,7 @@
     "file": "pemilik-dashboard.webm",
     "title": "Menyusun dashboard pertama",
     "captions": "pemilik-dashboard.vtt",
-    "durationSec": 74,
+    "durationSec": 76,
     "poster": "pemilik-dashboard.poster.png"
   },
   {
@@ -28,15 +28,23 @@
     "file": "pemilik-pivot.webm",
     "title": "Tabel pivot seperti di Excel",
     "captions": "pemilik-pivot.vtt",
-    "durationSec": 82,
+    "durationSec": 86,
     "poster": "pemilik-pivot.poster.png"
+  },
+  {
+    "slug": "satu-pivot-banyak-widget",
+    "file": "pemilik-pivot-tersimpan.webm",
+    "title": "Pivot tersimpan dan field terhitung",
+    "captions": "pemilik-pivot-tersimpan.vtt",
+    "durationSec": 179,
+    "poster": "pemilik-pivot-tersimpan.poster.png"
   },
   {
     "slug": "bagikan-dashboard",
     "file": "pemilik-bagikan.webm",
     "title": "Membagikan dashboard",
     "captions": "pemilik-bagikan.vtt",
-    "durationSec": 35,
+    "durationSec": 36,
     "poster": "pemilik-bagikan.poster.png"
   },
   {
@@ -48,27 +56,11 @@
     "poster": "editor-ubah.poster.png"
   },
   {
-    "slug": "viewer-lihat-filter-ekspor",
-    "file": "viewer-filter-ekspor.webm",
-    "title": "Memakai filter dan mengekspor",
-    "captions": "viewer-filter-ekspor.vtt",
-    "durationSec": 35,
-    "poster": "viewer-filter-ekspor.poster.png"
-  },
-  {
-    "slug": "admin-kelola-pengguna",
-    "file": "admin-pengguna.webm",
-    "title": "Mengelola pengguna",
-    "captions": "admin-pengguna.vtt",
-    "durationSec": 55,
-    "poster": "admin-pengguna.poster.png"
-  },
-  {
     "slug": "admin-tulis-panduan",
     "file": "admin-panduan.webm",
     "title": "Menulis artikel panduan",
     "captions": "admin-panduan.vtt",
-    "durationSec": 43,
+    "durationSec": 44,
     "poster": "admin-panduan.poster.png"
   },
   {
@@ -76,7 +68,23 @@
     "file": "umum-mengenal.webm",
     "title": "Masuk dan mengenal menu",
     "captions": "umum-mengenal.vtt",
-    "durationSec": 38,
+    "durationSec": 39,
     "poster": "umum-mengenal.poster.png"
+  },
+  {
+    "slug": "viewer-lihat-filter-ekspor",
+    "file": "viewer-filter-ekspor.webm",
+    "title": "Memakai filter dan mengekspor",
+    "captions": "viewer-filter-ekspor.vtt",
+    "durationSec": 55,
+    "poster": "viewer-filter-ekspor.poster.png"
+  },
+  {
+    "slug": "admin-kelola-pengguna",
+    "file": "admin-pengguna.webm",
+    "title": "Mengelola pengguna",
+    "captions": "admin-pengguna.vtt",
+    "durationSec": 69,
+    "poster": "admin-pengguna.poster.png"
   }
 ]

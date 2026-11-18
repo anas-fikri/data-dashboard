@@ -92,7 +92,7 @@ export function DashboardFiltersProvider({
   dashboardId: string;
   columns: FilterColumnView[];
   crossColumns: readonly string[];
-  widgets: { id: string; title: string; type: string; spec: unknown }[];
+  widgets: { id: string; title: string; type: string; spec: unknown; autoTitle?: string }[];
   children: React.ReactNode;
 }) {
   const columns = useMemo(() => oneControlPerName(allColumns), [allColumns]);
@@ -163,7 +163,10 @@ export function DashboardFiltersProvider({
     atDefaults,
     restoreDefaults: () => update(keep(defaults.filters)),
     urlTooLong,
-    widgetTitle: (id) => widgets.find((w) => w.id === id)?.title || "Widget tanpa judul",
+    widgetTitle: (id) => {
+      const w = widgets.find((x) => x.id === id);
+      return w?.title || w?.autoTitle || "Widget tanpa judul";
+    },
     widgetGrain: (id) => {
       const w = widgets.find((x) => x.id === id);
       const p = w ? parseWidgetConfig(w.type, w.spec) : null;
