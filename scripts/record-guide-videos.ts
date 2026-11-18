@@ -327,7 +327,8 @@ async function record(
 const sidebar = (p: Page, label: string) =>
   p.getByTestId("sidebar").getByRole("link", { name: label, exact: true });
 const widgetTitled = (p: Page, title: string) =>
-  p.getByTestId("widget").filter({ has: p.getByRole("heading", { name: title }) });
+  // Judul persis: "Paket per cabang" tidak boleh cocok dengan "Paket per cabang per bulan" (pivot).
+  p.getByTestId("widget").filter({ has: p.getByRole("heading", { name: title, exact: true }) });
 
 async function addWidget(s: Scene, title: string, type: string) {
   const p = s.page;
@@ -809,8 +810,14 @@ async function main() {
         await s.click(p.getByTestId("export-xlsx"), 600);
         await expect(p.getByTestId("export-download").first()).toBeVisible({ timeout: 60_000 });
         await s.step(2600);
-        await s.talk();
         await p.keyboard.press("Escape");
+        // v1.23: unduh seluruh dashboard (PDF/PNG/HTML) — panel dibuka dan dijelaskan, tanpa membuat file.
+        await s.click(p.getByTestId("dashboard-pdf-export"), 900);
+        await expect(p.getByTestId("dashboard-pdf-panel")).toBeVisible();
+        // step: panel tetap terbuka sampai kalimatnya selesai diucapkan.
+        await s.step(1500);
+        await p.keyboard.press("Escape");
+        await s.talk();
         await s.click(p.getByTestId("filter-clear-all"), 1500);
         await s.idle(2000);
       },
@@ -830,6 +837,11 @@ async function main() {
         await s.talk();
         await s.click(sidebar(p, "Admin"), 1200);
         await s.click(p.getByRole("link", { name: /Pengguna/ }).first(), 1500);
+        // v1.24: bagian Sedang online (heartbeat tab admin sendiri tercatat saat halaman dibuka).
+        await expect(p.getByTestId("online-user").first()).toBeVisible({ timeout: 45_000 });
+        await p.getByTestId("online-users").hover();
+        // step: bagian Sedang online tetap terlihat sampai kalimatnya selesai (dialog tambah sesudahnya).
+        await s.step(1500);
         await s.click(p.getByRole("button", { name: "Tambah pengguna", exact: true }), 800);
         await s.talk();
         const add = p.getByTestId("add-user-dialog");
@@ -840,7 +852,7 @@ async function main() {
         await s.click(add.getByRole("button", { name: "Selesai" }), 1000);
         await s.talk();
         await s.type(p.getByPlaceholder("Cari email atau nama"), "rina");
-        await s.click(p.getByRole("button", { name: "Cari" }), 1500);
+        await s.click(p.getByRole("button", { name: "Cari", exact: true }), 1500);
         // Kalimat tentang isi menu diucapkan selagi menunya terbuka.
         await s.click(p.getByRole("button", { name: `Aksi untuk ${invite}` }), 600);
         await s.step(1500);
@@ -922,7 +934,7 @@ async function main() {
         await s.step(1500);
         await s.talk();
         await s.type(p.getByLabel("Cari panduan"), "filter");
-        await s.click(p.getByRole("button", { name: "Cari" }), 1500);
+        await s.click(p.getByRole("button", { name: "Cari", exact: true }), 1500);
         await s.idle(1500);
       },
     );
@@ -933,11 +945,24 @@ async function main() {
     for (const who of Object.keys(ACCOUNTS))
       rmSync(join(OUT, `.state-${who}.json`), { force: true });
   }
-  if (!ONLY) {
-    writeFileSync(join(OUT, "videos.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-    // Durasi + poster dihitung di sini (ffmpeg lokal), bukan di image produksi.
-    execFileSync("node", ["scripts/guide-video-meta.mjs", OUT], { stdio: "inherit" });
-  } else console.log(JSON.stringify(manifest, null, 2));
+  // --only: entri adegan yang direkam ulang menggantikan entrinya di videos.json yang sudah ada (rekam
+  // ulang sebagian tanpa menghilangkan video lain); tanpa videos.json → hanya dicetak.
+  const file = join(OUT, "videos.json");
+  if (ONLY && !existsSync(file)) {
+    console.log(JSON.stringify(manifest, null, 2));
+    return;
+  }
+  const merged = ONLY
+    ? [
+        ...(JSON.parse(readFileSync(file, "utf8")) as typeof manifest).filter(
+          (m) => !manifest.some((n) => n.slug === m.slug),
+        ),
+        ...manifest,
+      ]
+    : manifest;
+  writeFileSync(file, `${JSON.stringify(merged, null, 2)}\n`);
+  // Durasi + poster dihitung di sini (ffmpeg lokal), bukan di image produksi.
+  execFileSync("node", ["scripts/guide-video-meta.mjs", OUT], { stdio: "inherit" });
 }
 
 void main().catch((e) => {
